@@ -1,8 +1,8 @@
 package main
 
 import (
+	"fmt"
 	"log"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -11,6 +11,9 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
 type CommitDatum struct {
@@ -21,7 +24,7 @@ type CommitDatum struct {
 	HasSource  bool
 }
 
-const REPO = "../../Unreal/DemoRepo"
+const REPO = "../../Unreal/ScaleGame/"
 
 func main() {
 	myApp := app.New()
@@ -30,34 +33,46 @@ func main() {
 
 	start := time.Now()
 
-	cmd := exec.Command(`git.exe`, `-P`, `log`, `-10000`, `--pretty=%H||%s||%an`)
-	cmd.Dir = REPO
-	out, err := cmd.CombinedOutput()
+	//	cmd := exec.Command(`git.exe`, `-P`, `log`, `-10000`, `--pretty=%H||%s||%an`)
 
+	r, err := git.PlainOpen(REPO)
 	if err != nil {
-		log.Fatal(err, string(out))
+		log.Fatal(err)
 	}
 
-	srtOut := string(out)
-	// split the string into lines
-	lines := strings.Split(srtOut, "\n")
-	// split the lines by the delimiter
-	// and create a slice of struct
-	commitData := make([]*CommitDatum, 0, len(lines))
-	for _, line := range lines {
-		if line != "" {
-			commit := strings.Split(line, "||")
-			//`git diff-tree --no-commit-id --name-only -r <commit>`
-			diffCmd := exec.Command("git.exe", "diff-tree", "--no-commit-id", "--name-only", "-r", commit[0], "--")
-			diffCmd.Dir = REPO
-			diffOut, _ := diffCmd.CombinedOutput()
-			diffStr := string(diffOut)
-			newCommit := &CommitDatum{Sha: commit[0], Msg: commit[1], User: commit[2]}
-			newCommit.HasContent = strings.Contains(diffStr, "Content/")
-			newCommit.HasSource = strings.Contains(diffStr, "Source/")
-			commitData = append(commitData, newCommit)
+	commitsIter, _ := r.Log(&git.LogOptions{})
+
+	commitData := make([]*CommitDatum, 0)
+
+	commitsIter.ForEach(func(c *object.Commit) error {
+		fmt.Println(c.Hash, c.Message, c.Author.Name)
+
+		newCommit := &CommitDatum{Sha: c.Hash.String(), Msg: strings.Split(c.Message, "\n")[0], User: c.Author.Name}
+		if len(c.ParentHashes) > 0 {
+			// diffCmd := exec.Command("git.exe", "diff-tree", "--no-commit-id", "--name-only", "-r", commit[0], "--")
+			parentHash := c.ParentHashes[0]
+			parent, _ := r.CommitObject(parentHash)
+			parentTree, _ := parent.Tree()
+			commitTree, _ := c.Tree()
+			diffTree, _ := commitTree.Diff(parentTree)
+			for _, change := range diffTree {
+				fmt.Println(change.From.Name, change.To.Name)
+
+				newCommit.HasContent = newCommit.HasContent || strings.Contains(change.To.Name, "Content/") || strings.Contains(change.From.Name, "Content/")
+				newCommit.HasSource = newCommit.HasSource || strings.Contains(change.To.Name, "Source/") || strings.Contains(change.From.Name, "Source/")
+
+				if newCommit.HasContent && newCommit.HasSource {
+					break
+				}
+			}
+		} else {
+
+			fmt.Println("Initial Commit")
 		}
-	}
+		commitData = append(commitData, newCommit)
+
+		return nil
+	})
 
 	elapsed := time.Since(start)
 	log.Printf("Git took %s", elapsed)

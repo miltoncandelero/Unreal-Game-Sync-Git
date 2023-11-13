@@ -37,9 +37,25 @@ func (e ErrExec) Error() string {
 }
 
 func Execute(workingDir, cmd string, args ...string) ([]string, error) {
+
+	outStr, err := ExecuteOneLine(workingDir, cmd, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(outStr, "\n")
+	for idx, line := range lines {
+		lines[idx] = strings.TrimSpace(line)
+	}
+
+	return lines, nil
+}
+
+func ExecuteOneLine(workingDir, cmd string, args ...string) (string, error) {
 	_, err := exec.LookPath(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrApplicationNotFound, cmd)
+		return "", fmt.Errorf("%w: %s", ErrApplicationNotFound, cmd)
 	}
 
 	c := exec.Command(cmd, args...)
@@ -59,7 +75,7 @@ func Execute(workingDir, cmd string, args ...string) ([]string, error) {
 
 	err = c.Run()
 	if err != nil {
-		return nil, ErrExec{
+		return "", ErrExec{
 			ExitCode:  c.ProcessState.ExitCode(),
 			Output:    strings.TrimSpace(combinedOut.String()),
 			ErrOutput: strings.TrimSpace(stderrBuf.String()),
@@ -69,11 +85,5 @@ func Execute(workingDir, cmd string, args ...string) ([]string, error) {
 	}
 
 	outStr := combinedOut.String()
-
-	lines := strings.Split(outStr, "\n")
-	for idx, line := range lines {
-		lines[idx] = strings.TrimSpace(line)
-	}
-
-	return lines, nil
+	return outStr, nil
 }

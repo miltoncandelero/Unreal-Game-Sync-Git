@@ -1,14 +1,26 @@
 package core
 
 import (
+	"encoding/json"
+	"errors"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 )
+
+type LockDatum struct {
+	ID    string `json:"id"`
+	Path  string `json:"path"`
+	Owner struct {
+		Name string `json:"name"`
+	} `json:"owner"`
+	LockedAt time.Time `json:"locked_at"`
+}
 
 type CommitDatum struct {
 	Hash             string
@@ -137,4 +149,167 @@ func GetCurrentBranchFromRepository(repository *git.Repository) (string, error) 
 	}
 
 	return currentBranchName, nil
+}
+
+func LinkGitConfig(repoPath string) error {
+	_, err := Execute(repoPath, GIT, "config", "include.path", "/.gitconfig")
+	return err
+}
+
+func NeedsCredentials(repoPath string) bool {
+	username, _ := ExecuteOneLine(repoPath, GIT, "config", "user.name")
+	if username == "" {
+		return true
+	}
+	email, _ := ExecuteOneLine(repoPath, GIT, "config", "user.email")
+	if email == "" {
+		return true
+	}
+	return false
+}
+
+func GetGitProviderName(repoPath string) string {
+	// Probably fails if you have many remotes
+
+	remotes, _ := ExecuteOneLine(repoPath, GIT, "remote", "get-url", "origin")
+
+	if strings.Contains(remotes, "github") {
+		return "GitHub"
+	}
+	if strings.Contains(remotes, "gitlab") {
+		return "GitLab"
+	}
+	if strings.Contains(remotes, "gitea") {
+		return "Gitea" // probably not correct, but what can I do?
+	}
+
+	return "Unknown"
+}
+
+func FinishRebase(repoPath string) error {
+	// Non porcelain command but there is no way to know if we are mid rebase :(
+	currentStatus, _ := ExecuteOneLine(repoPath, GIT, "status", "-uno")
+	if !strings.Contains(currentStatus, "rebase") {
+		return errors.New("Not in a rebase")
+	}
+
+	if IsUnrealRunning() {
+		return errors.New("Unreal is running, cannot finish rebase")
+	}
+
+	if strings.Contains(currentStatus, "git rebase --continue") ||
+		strings.Contains(currentStatus, "nothing to commit") ||
+		strings.Contains(currentStatus, "all conflicts fixed") {
+
+		// We should be able to continue the rebase
+		_, err := ExecuteOneLine(repoPath, GIT, "rebase", "--continue")
+		return err
+	} else {
+		// We are in a rebase but we have conflicts, this is baaaad
+		return errors.New("You are in the middle of a rebase. Changes on one of your commits will be overridden by incoming changes. Please request help to resolve conflicts.")
+	}
+}
+
+func PruneLFS(repoPath string) error {
+	_, err := ExecuteOneLine(repoPath, GIT, "lfs", "prune", "-fc")
+	return err
+}
+
+func IsShallowRepo(repoPath string) bool {
+	isShallow, _ := ExecuteOneLine(repoPath, GIT, "rev-parse", "--is-shallow-repository")
+	if strings.Contains(isShallow, "true") {
+		return true
+	}
+	return false
+}
+
+func UnshallowRepo(repoPath string) error {
+	if IsShallowRepo(repoPath) {
+		_, err := ExecuteOneLine(repoPath, GIT, "fetch", "--unshallow")
+		return err
+	}
+	return nil
+}
+
+func IsWorkingTreeClean(repoPath string) bool {
+	status, _ := ExecuteOneLine(repoPath, GIT, "status", "--porcelain")
+	return status == ""
+}
+
+func GetAheadBehind(repoPath string) (int, int, error) {
+	statusLines, _ := Execute(repoPath, GIT, "status", "--porcelain=2", "--branch")
+	for _, line := range statusLines {
+		if strings.Contains(line, "# branch.ab ") {
+			strings.Replace(line, "# branch.ab ", "", 1)
+			ab := strings.Split(line, " ")
+			ahead, _ := strconv.Atoi(ab[0])
+			behind, _ := strconv.Atoi(ab[1])
+			return ahead, behind, nil
+		}
+	}
+	return 0, 0, errors.New("Could not find ahead/behind")
+}
+
+func GitSmartPull(repoPath string) error {
+	ahead, behind, err := GetAheadBehind(repoPath)
+	if err != nil {
+		return err
+	}
+	if behind == 0 {
+		// nothing to pull :)
+		return nil
+	}
+	if ahead == 0 {
+		// we can fast forward, we have no changes!
+		_, err := ExecuteOneLine(repoPath, GIT, "pull", "--ff-only")
+		return err
+	} else {
+		// we have changes, we need to rebase
+		_, err := ExecuteOneLine(repoPath, GIT, "pull", "--rebase", "--autostash")
+		return err
+	}
+}
+
+func GitPush(repoPath string) error {
+	ahead, behind, err := GetAheadBehind(repoPath)
+
+	if err != nil {
+		return err
+	}
+	if ahead == 0 {
+		//nothing to push :)
+		return nil
+	}
+
+	if behind != 0 {
+		// we are behind, we need to pull first
+		return errors.New("Cannot push, you are behind")
+	}
+
+	_, err = ExecuteOneLine(repoPath, GIT, "push")
+	return err
+}
+
+func GetLockedFiles(repoPath string, fromUser string) ([]LockDatum, error) {
+	jsonLocks, _ := ExecuteOneLine(repoPath, GIT, "lfs", "locks", "--json")
+	locks := make([]LockDatum, 0)
+	err := json.Unmarshal([]byte(jsonLocks), &locks)
+	if err != nil {
+		return nil, err
+	}
+	if fromUser == "" {
+		return locks, nil
+	}
+	filteredLocks := make([]LockDatum, 0)
+	for _, lock := range locks {
+		if lock.Owner.Name == fromUser {
+			filteredLocks = append(filteredLocks, lock)
+		}
+	}
+	return filteredLocks, nil
+}
+
+func IsPathRepo(repoPath string) bool {
+	_, err := ExecuteOneLine(repoPath, GIT, "rev-parse", "--git-dir")
+	return err == nil
 }

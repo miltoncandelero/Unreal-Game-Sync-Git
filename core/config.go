@@ -5,6 +5,8 @@ import (
 	"os"
 )
 
+const CONFIG_FILE = "ugsg.json"
+
 type Config struct {
 	ConfigPath  string `json:"-"`
 	GitExecPath string `json:"gitPath"`

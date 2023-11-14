@@ -12,14 +12,15 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/storage"
+	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/widget"
 	"github.com/miltoncandelero/ugsg/core"
 	"github.com/miltoncandelero/ugsg/gui"
+	"github.com/ncruces/zenity"
 )
 
 var myApp fyne.App
 var myWindow fyne.Window
-var cards *fyne.Container
 
 func main() {
 
@@ -30,53 +31,29 @@ func main() {
 	myWindow.SetOnDropped(func(_ fyne.Position, uris []fyne.URI) {
 		for _, uri := range uris {
 			if strings.Contains(uri.String(), ".uproject") {
-				uprojectOpened(uri)
+				uprojectOpened(uri.Path())
 				return
 			}
 		}
 	})
-	d := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		if reader == nil {
-			fmt.Println("No file selected")
-			return
-		}
-		defer reader.Close()
-		uri := reader.URI()
-		if strings.Contains(uri.String(), ".uproject") {
-			uprojectOpened(uri)
-			return
-		}
-	}, myWindow)
 
-	d.Resize(fyne.NewSize(600, 600))
-	d.SetFilter(storage.NewExtensionFileFilter([]string{".uproject"}))
-	d.Show()
-
-	//vertical box for cards
-	cards = container.NewVBox()
-
-	center := container.NewCenter(cards)
+	//vertical box for menu
 
 	config := gui.LoadGUIConfig(gui.GUI_CONFIG_FILE)
-	fmt.Printf("config: %v\n", config)
-	for _, project := range config.RecentProjects {
-		fmt.Printf("project: %v\n", project)
-		cards.Add(gui.MakeCardFromProject(project))
-	}
+	cardList := gui.MakeCardListsFromProjects(&config.RecentProjects)
 
-	cards.Refresh()
+	// add an open button
+	button := widget.NewButton("Open project", openFilePickerUproject)
 
-	myWindow.SetContent(center)
+	center := container.NewBorder(layout.NewSpacer(), button, layout.NewSpacer(), layout.NewSpacer(), cardList)
+
+	myWindow.SetContent(container.NewAppTabs(container.NewTabItem("Open Project", center)))
 	myWindow.ShowAndRun()
 }
 
-func uprojectOpened(uprojectPath fyne.URI) {
+func uprojectOpened(uprojectPath string) {
 	fmt.Println("Opening", uprojectPath)
-	repoPath := filepath.Dir(uprojectPath.Path())
+	repoPath := filepath.Dir(uprojectPath)
 	if !core.IsPathRepo(repoPath) {
 		// This is not a repo! panic
 		dialog.ShowError(fmt.Errorf("This is not a git repository"), myWindow)
@@ -84,13 +61,13 @@ func uprojectOpened(uprojectPath fyne.URI) {
 	}
 
 	config := gui.GetConfig()
-	if !slices.Contains(config.RecentProjects, uprojectPath.Path()) {
-		config.RecentProjects = append(gui.GetConfig().RecentProjects, uprojectPath.Path())
+	if !slices.Contains(config.RecentProjects, uprojectPath) {
+		config.RecentProjects = append(gui.GetConfig().RecentProjects, uprojectPath)
 		gui.SaveConfig()
 	}
 
-	cards.Add(gui.MakeCardFromProject(uprojectPath.Path()))
-	cards.Refresh()
+	// cards.Add(gui.MakeCardFromProject(uprojectPath))
+	// cards.Refresh()
 
 }
 
@@ -106,4 +83,22 @@ func isRunningFromInsideProject() bool {
 		}
 	}
 	return false
+}
+
+func openFilePickerUproject() {
+	file, err := zenity.SelectFile(
+		zenity.Filename("./"),
+		zenity.Title("Select Unreal Engine Project file"),
+		zenity.Modal(),
+		zenity.FileFilters{
+			{
+				Name:     "Unreal Engine Project files",
+				Patterns: []string{"*.uproject"},
+				CaseFold: false,
+			},
+		},
+	)
+	if err == nil {
+		uprojectOpened(file)
+	}
 }

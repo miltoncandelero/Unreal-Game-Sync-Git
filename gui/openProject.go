@@ -37,6 +37,7 @@ func UProjectOpened(uprojectPath string) {
 	repoPath := filepath.Dir(uprojectPath)
 	if !core.IsPathRepo(repoPath) {
 		// This is not a repo! panic
+
 		dialog.ShowError(fmt.Errorf("This is not a git repository"), GetApp().Window)
 		return
 	}

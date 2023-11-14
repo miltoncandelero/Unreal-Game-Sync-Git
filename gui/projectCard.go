@@ -115,7 +115,9 @@ func MakeCardFromProject(projectFile string) *ProjectCard {
 	linkLabelStack.Add(projectCard.ExploreLink)
 	linkLabelStack.Add(projectCard.ForgetLink)
 	projectCard.Container.Add(projectCard.Button)
-	projectCard.Container.Add(verticalStack)
+	// card for nice padding
+	projectCard.Container.Add(widget.NewCard("", "", verticalStack))
+	// projectCard.Container.Add(verticalStack)
 
 	//projectCard.SetProject(projectFile, func(string) {}, func() {})
 	return projectCard

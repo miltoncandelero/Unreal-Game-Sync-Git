@@ -313,3 +313,9 @@ func IsPathRepo(repoPath string) bool {
 	_, err := ExecuteOneLine(repoPath, GIT, "rev-parse", "--git-dir")
 	return err == nil
 }
+
+func IsDeatachedHead(repoPath string) bool {
+	//git symbolic-ref -q HEAD
+	_, err := ExecuteOneLine(repoPath, GIT, "symbolic-ref", "-q", "HEAD")
+	return err != nil
+}

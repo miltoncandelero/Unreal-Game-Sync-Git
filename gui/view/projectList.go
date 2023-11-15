@@ -1,11 +1,11 @@
-package gui
+package view
 
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 )
 
-func MakeCardListsFromProjects(projects *[]string, callback func(string)) fyne.CanvasObject {
+func MakeCardListsFromProjects(projects *[]string, callback func(string), forget func(string)) fyne.CanvasObject {
 	var retval *widget.List
 	retval = widget.NewList(
 		func() int {
@@ -15,7 +15,7 @@ func MakeCardListsFromProjects(projects *[]string, callback func(string)) fyne.C
 			return MakeCardFromProject("")
 		},
 		func(id widget.ListItemID, item fyne.CanvasObject) {
-			item.(*ProjectCard).SetProject((*projects)[id], callback, retval.Refresh)
+			item.(*ProjectCard).SetProject((*projects)[id], callback, retval.Refresh, forget)
 		})
 	return retval
 }

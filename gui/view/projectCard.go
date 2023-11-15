@@ -1,11 +1,10 @@
-package gui
+package view
 
 import (
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -19,8 +18,6 @@ import (
 type ProjectCard struct {
 	// extends widget
 	widget.BaseWidget
-
-	Renderer *fyne.WidgetRenderer
 
 	Container   *fyne.Container
 	Title       *canvas.Text
@@ -44,7 +41,7 @@ func (card *ProjectCard) MinSize() fyne.Size {
 	return card.Container.MinSize()
 }
 
-func (card *ProjectCard) SetProject(projectFile string, callback func(string), refresh func()) {
+func (card *ProjectCard) SetProject(projectFile string, callback func(string), refresh func(), forget func(string)) {
 	projectPath := filepath.Dir(projectFile)
 	projectName := strings.Replace(filepath.Base(projectFile), ".uproject", "", -1)
 
@@ -77,13 +74,7 @@ func (card *ProjectCard) SetProject(projectFile string, callback func(string), r
 
 	card.ForgetLink.OnTapped = func() {
 		fmt.Println("Forgetting project: ", card.ProjectFile)
-		config := GetConfig()
-		foundIdx := slices.Index(config.RecentProjects, card.ProjectFile)
-		if foundIdx != -1 {
-			// Remove it from the list
-			config.RecentProjects = slices.Delete(config.RecentProjects, foundIdx, foundIdx+1)
-		}
-		SaveConfig()
+		forget(card.ProjectFile)
 		refresh()
 	}
 

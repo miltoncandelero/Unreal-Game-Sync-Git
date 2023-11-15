@@ -1,36 +1,15 @@
-package gui
+package controller
 
 import (
 	"fmt"
 	"path/filepath"
 	"slices"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/theme"
-	"fyne.io/fyne/v2/widget"
 	"github.com/miltoncandelero/ugsg/core"
+	"github.com/miltoncandelero/ugsg/gui/view"
 	"github.com/ncruces/zenity"
 )
-
-func MakeOpenProjectScreen() fyne.CanvasObject {
-	config := GetConfig()
-	cardList := MakeCardListsFromProjects(&config.RecentProjects, UProjectOpened)
-
-	subtitle := canvas.NewText("Recent Projects", theme.ForegroundColor())
-	subtitle.TextStyle.Bold = true
-	subtitle.TextSize = theme.TextSubHeadingSize()
-
-	// add an open button
-	button := widget.NewButton("Open project", openFilePickerUproject)
-
-	border := container.NewBorder(subtitle, button, layout.NewSpacer(), layout.NewSpacer(), cardList)
-
-	return border
-}
 
 func UProjectOpened(uprojectPath string) {
 	fmt.Println("Opening", uprojectPath)
@@ -52,6 +31,10 @@ func UProjectOpened(uprojectPath string) {
 
 	config.RecentProjects = append([]string{uprojectPath}, config.RecentProjects...)
 	SaveConfig()
+
+	projectStatus := view.MakeProjectStatus(uprojectPath)
+
+	appendProjectToMainWindow(projectStatus, uprojectPath)
 }
 
 func openFilePickerUproject() {
@@ -70,4 +53,14 @@ func openFilePickerUproject() {
 	if err == nil {
 		UProjectOpened(file)
 	}
+}
+
+func ForgetProject(projectFile string) {
+	config := GetConfig()
+	foundIdx := slices.Index(config.RecentProjects, projectFile)
+	if foundIdx != -1 {
+		// Remove it from the list
+		config.RecentProjects = slices.Delete(config.RecentProjects, foundIdx, foundIdx+1)
+	}
+	SaveConfig()
 }

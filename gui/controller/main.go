@@ -26,7 +26,7 @@ func GetApp() *MainApp {
 	if mainAppRef == nil {
 		myApp := app.NewWithID("com.killabunnies.ugsg")
 		myWindow := myApp.NewWindow("List Data")
-		myWindow.Resize(fyne.NewSize(1600, 600))
+		myWindow.Resize(fyne.NewSize(900, 600))
 
 		mainAppRef = &MainApp{
 			App:         myApp,

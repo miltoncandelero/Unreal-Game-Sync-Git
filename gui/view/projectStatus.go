@@ -4,6 +4,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -14,24 +15,34 @@ type ProjectStatus struct {
 
 	Container *fyne.Container
 
-	ProjectTitle *canvas.Text
-	Subtitle     *canvas.Text
+	ProjectTitle       *canvas.Text
+	Subtitle           *canvas.Text
+	EngineVersion      *canvas.Text
+	SwapEngineButton   *widget.Button
+	SwapEngineCallback func()
 
 	// Git buttons
-	RepoStatus              *canvas.Text
-	RepoAheadBehind         *canvas.Text
-	RepoBranch              *canvas.Text
-	FixConfigButton         *widget.Button
-	FixConfigButtonCallback func()
-	PullButton              *widget.Button
-	PullButtonCallback      func()
-	PushButton              *widget.Button
-	PushButtonCallback      func()
-	CommitButton            *widget.Button
-	CommitButtonCallback    func()
+	RepoOrigin            *IconText
+	RepoUser              *IconText
+	FixUserLink           *widget.Hyperlink
+	FixUserLinkCallback   func()
+	RepoStatus            *IconText
+	RepoAhead             *IconText
+	RepoBehind            *IconText
+	RepoBranch            *widget.Select
+	SwapBranchCallback    func(string) string
+	ConfigStatus          *IconText
+	FixConfigLink         *widget.Hyperlink
+	FixConfigLinkCallback func()
+	PullButton            *widget.Button
+	PullButtonCallback    func()
+	SyncButton            *widget.Button
+	SyncButtonCallback    func()
+	CommitButton          *widget.Button
+	CommitButtonCallback  func()
 
 	// Build manager buttons
-	BuildStatus                 *canvas.Text
+	BuildStatus                 *IconText
 	DownloadBuildButton         *widget.Button
 	DownloadBuildButtonCallback func()
 	UploadBuildButton           *widget.Button
@@ -52,51 +63,108 @@ func (pstatus *ProjectStatus) CreateRenderer() fyne.WidgetRenderer {
 func MakeProjectStatus(projectFile string) *ProjectStatus {
 	pstatus := &ProjectStatus{}
 
-	pstatus.ProjectTitle = canvas.NewText("Project Name", theme.ForegroundColor())
-	pstatus.ProjectTitle.TextStyle.Bold = true
-	pstatus.ProjectTitle.TextSize = theme.TextSize() * 1.5
-
-	pstatus.Subtitle = canvas.NewText("Project Path", theme.ForegroundColor())
-	pstatus.Subtitle.TextSize = theme.TextSize()
+	pstatus.ProjectTitle = canvas.NewText("My Cool Project", theme.ForegroundColor())
+	pstatus.ProjectTitle.TextSize = theme.TextHeadingSize()
+	pstatus.ProjectTitle.Alignment = fyne.TextAlignCenter
+	pstatus.Subtitle = canvas.NewText("C:/Somewhere/over/the/rainbow", theme.ForegroundColor())
+	pstatus.Subtitle.TextSize = theme.TextSubHeadingSize()
+	pstatus.Subtitle.Alignment = fyne.TextAlignCenter
+	pstatus.EngineVersion = canvas.NewText("Engine: 5.0.1", theme.ForegroundColor())
+	pstatus.SwapEngineButton = widget.NewButtonWithIcon("Swap Engine", theme.SearchReplaceIcon(), nil)
+	pstatus.SwapEngineCallback = func() {}
 
 	// Git buttons
-	pstatus.RepoStatus = canvas.NewText("Repo Status", theme.ForegroundColor())
-	pstatus.RepoStatus.TextSize = theme.TextSize()
-	pstatus.RepoAheadBehind = canvas.NewText("Ahead/Behind", theme.ForegroundColor())
-	pstatus.RepoAheadBehind.TextSize = theme.TextSize()
-	pstatus.RepoBranch = canvas.NewText("Branch", theme.ForegroundColor())
-	pstatus.RepoBranch.TextSize = theme.TextSize()
-	pstatus.FixConfigButton = widget.NewButton("Fix Config", func() { pstatus.FixConfigButtonCallback() })
-	pstatus.PullButton = widget.NewButton("Pull", func() { pstatus.PullButtonCallback() })
-	pstatus.PushButton = widget.NewButton("Push", func() { pstatus.PushButtonCallback() })
-	pstatus.CommitButton = widget.NewButton("Commit", func() { pstatus.CommitButtonCallback() })
+	repositoryTitleLabel := canvas.NewText("REPOSITORY", theme.ForegroundColor())
+	repositoryTitleLabel.Alignment = fyne.TextAlignCenter
+	repositoryTitleLabel.TextSize = theme.TextSubHeadingSize()
+
+	pstatus.RepoOrigin = MakeIconText("Origin", theme.FileIcon())
+	pstatus.RepoUser = MakeIconText("User", theme.AccountIcon())
+	pstatus.FixUserLink = widget.NewHyperlink("Fix User", nil)
+	pstatus.FixUserLinkCallback = func() {}
+
+	pstatus.RepoStatus = MakeIconText("Status", theme.QuestionIcon())
+	pstatus.RepoAhead = MakeIconText("32", theme.MenuDropUpIcon())
+	pstatus.RepoAhead.SetColor(theme.ColorNameSuccess)
+	pstatus.RepoBehind = MakeIconText("12", theme.MenuDropDownIcon())
+	pstatus.RepoBehind.SetColor(theme.ColorNameError)
+	pstatus.RepoBranch = widget.NewSelect([]string{"Branch"}, func(string) {})
+	pstatus.SwapBranchCallback = func(string) string { return "" }
+	pstatus.ConfigStatus = MakeIconText("Config", theme.QuestionIcon())
+	pstatus.FixConfigLink = widget.NewHyperlink("Fix Config", nil)
+	pstatus.FixConfigLinkCallback = func() {}
+	pstatus.PullButton = widget.NewButtonWithIcon("Pull", theme.MenuDropDownIcon(), nil)
+	pstatus.PullButtonCallback = func() {}
+	pstatus.SyncButton = widget.NewButtonWithIcon("Sync", theme.ViewRefreshIcon(), nil)
+	pstatus.SyncButtonCallback = func() {}
+	pstatus.CommitButton = widget.NewButtonWithIcon("Commit", theme.DocumentSaveIcon(), nil)
+	pstatus.CommitButtonCallback = func() {}
 
 	// Build manager buttons
-	pstatus.BuildStatus = canvas.NewText("Build Status", theme.ForegroundColor())
-	pstatus.BuildStatus.TextSize = theme.TextSize()
-	pstatus.DownloadBuildButton = widget.NewButton("Download Build", func() { pstatus.DownloadBuildButtonCallback() })
-	pstatus.UploadBuildButton = widget.NewButton("Upload Build", func() { pstatus.UploadBuildButtonCallback() })
+	buildTitleLabel := canvas.NewText("BUILD", theme.ForegroundColor())
+	buildTitleLabel.Alignment = fyne.TextAlignCenter
+	buildTitleLabel.TextSize = theme.TextSubHeadingSize()
+
+	pstatus.BuildStatus = MakeIconText("Build", theme.QuestionIcon())
+	pstatus.DownloadBuildButton = widget.NewButtonWithIcon("Download Build", theme.DownloadIcon(), nil)
+	pstatus.DownloadBuildButtonCallback = func() {}
+	pstatus.UploadBuildButton = widget.NewButtonWithIcon("Upload Build", theme.UploadIcon(), nil)
+	pstatus.UploadBuildButtonCallback = func() {}
 
 	// Unreal tool buttons
-	pstatus.GenerateSolutionButton = widget.NewButton("Generate Solution", func() { pstatus.GenerateSolutionButtonCallback() })
-	pstatus.BuildButton = widget.NewButton("Build", func() { pstatus.BuildButtonCallback() })
+	unrealTitleLabel := canvas.NewText("UNREAL TOOLS", theme.ForegroundColor())
+	unrealTitleLabel.Alignment = fyne.TextAlignCenter
+	unrealTitleLabel.TextSize = theme.TextSubHeadingSize()
 
-	pstatus.Container = container.NewVBox(
+	pstatus.GenerateSolutionButton = widget.NewButtonWithIcon("Generate Solution", theme.ViewRefreshIcon(), nil)
+	pstatus.GenerateSolutionButtonCallback = func() {}
+	pstatus.BuildButton = widget.NewButtonWithIcon("Build", theme.SettingsIcon(), nil)
+	pstatus.BuildButtonCallback = func() {}
+
+	pstatus.Container = container.NewStack(container.NewVBox(
 		pstatus.ProjectTitle,
 		pstatus.Subtitle,
-		pstatus.RepoStatus,
-		pstatus.RepoAheadBehind,
-		pstatus.RepoBranch,
-		pstatus.FixConfigButton,
-		pstatus.PullButton,
-		pstatus.PushButton,
-		pstatus.CommitButton,
-		pstatus.BuildStatus,
-		pstatus.DownloadBuildButton,
-		pstatus.UploadBuildButton,
-		pstatus.GenerateSolutionButton,
-		pstatus.BuildButton,
-	)
+		widget.NewSeparator(),
+		container.NewHBox(
+			&layout.Spacer{},
+			container.NewVBox(
+				&layout.Spacer{FixVertical: true},
+				repositoryTitleLabel,
+				widget.NewSeparator(),
+				container.NewHBox(pstatus.RepoStatus, pstatus.RepoAhead, pstatus.RepoBehind),
+				pstatus.RepoBranch,
+				container.NewHBox(pstatus.RepoUser, pstatus.FixUserLink),
+				container.NewHBox(pstatus.ConfigStatus, pstatus.FixConfigLink),
+				widget.NewSeparator(),
+				canvas.NewText("Actions", theme.ForegroundColor()),
+				pstatus.CommitButton,
+				pstatus.SyncButton,
+				pstatus.PullButton,
+			),
+			&layout.Spacer{},
+			container.NewVBox(
+				&layout.Spacer{FixVertical: true},
+				buildTitleLabel,
+				widget.NewSeparator(),
+				pstatus.BuildStatus,
+				widget.NewSeparator(),
+				canvas.NewText("Actions", theme.ForegroundColor()),
+				pstatus.DownloadBuildButton,
+				pstatus.UploadBuildButton,
+			),
+			&layout.Spacer{},
+			container.NewVBox(
+				&layout.Spacer{FixVertical: true},
+				unrealTitleLabel,
+				widget.NewSeparator(),
+				pstatus.EngineVersion,
+				pstatus.SwapEngineButton,
+				pstatus.GenerateSolutionButton,
+				pstatus.BuildButton,
+			),
+			&layout.Spacer{},
+		),
+	))
 
 	return pstatus
 }

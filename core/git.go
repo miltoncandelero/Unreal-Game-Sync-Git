@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -152,8 +154,29 @@ func GetCurrentBranchFromRepository(repository *git.Repository) (string, error) 
 }
 
 func LinkGitConfig(repoPath string) error {
-	_, err := Execute(repoPath, GIT, "config", "include.path", "/.gitconfig")
+	_, err := Execute(repoPath, GIT, "config", "--local", "include.path", ".gitconfig")
 	return err
+}
+
+type GitConfigStatus int
+
+const (
+	FILE_MISSING GitConfigStatus = iota
+	FILE_EXIST_BUT_NOT_LINKED
+	FILE_LINKED
+)
+
+func GetGitConfigStatus(repoPath string) GitConfigStatus {
+	_, err := os.Stat(filepath.Join(repoPath, ".gitconfig"))
+	if err != nil {
+		return FILE_MISSING
+	}
+	_, err = Execute(repoPath, GIT, "config", "--local", "include.path")
+	if err != nil {
+		return FILE_EXIST_BUT_NOT_LINKED
+	}
+
+	return FILE_LINKED
 }
 
 func NeedsCredentials(repoPath string) bool {
@@ -166,6 +189,16 @@ func NeedsCredentials(repoPath string) bool {
 		return true
 	}
 	return false
+}
+
+func GetUsernameFromRepo(repoPath string) string {
+	username, _ := ExecuteOneLine(repoPath, GIT, "config", "user.name")
+	return strings.TrimSpace(username)
+}
+
+func GetUserEmailFromRepo(repoPath string) string {
+	email, _ := ExecuteOneLine(repoPath, GIT, "config", "user.email")
+	return strings.TrimSpace(email)
 }
 
 func GetGitProviderName(repoPath string) string {
@@ -184,6 +217,11 @@ func GetGitProviderName(repoPath string) string {
 	}
 
 	return "Unknown"
+}
+
+func GetRepoOrigin(repoPath string) string {
+	remotes, _ := ExecuteOneLine(repoPath, GIT, "remote", "get-url", "origin")
+	return remotes
 }
 
 func FinishRebase(repoPath string) error {

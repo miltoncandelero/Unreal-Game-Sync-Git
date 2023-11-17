@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"github.com/miltoncandelero/ugsg/core"
 	"github.com/miltoncandelero/ugsg/gui/view"
 	"github.com/ncruces/zenity"
@@ -33,6 +36,24 @@ func UProjectOpened(uprojectPath string) {
 	SaveConfig()
 
 	projectStatus := view.MakeProjectStatus(uprojectPath)
+	projectStatus.ProjectTitle.Text = strings.ReplaceAll(filepath.Base(uprojectPath), ".uproject", "")
+	projectStatus.Subtitle.Text = uprojectPath
+	projectStatus.RepoOrigin.Text.Text = core.GetRepoOrigin(repoPath)
+	projectStatus.RepoUser.Text.Text = core.GetUsernameFromRepo(repoPath) + " (" + core.GetUserEmailFromRepo(repoPath) + ")"
+	ahead, behind, _ := core.GetAheadBehind(repoPath)
+	projectStatus.RepoAhead.Text.Text = strconv.Itoa(ahead)
+	projectStatus.RepoBehind.Text.Text = strconv.Itoa(behind)
+	switch core.GetGitConfigStatus(repoPath) {
+	case core.FILE_MISSING:
+		projectStatus.ConfigStatus.Text.Text = "Missing"
+		projectStatus.ConfigStatus.Text.Color = theme.WarningColor()
+	case core.FILE_EXIST_BUT_NOT_LINKED:
+		projectStatus.ConfigStatus.Text.Text = "Not linked"
+		projectStatus.ConfigStatus.Text.Color = theme.ErrorColor()
+	case core.FILE_LINKED:
+		projectStatus.ConfigStatus.Text.Text = "Linked"
+		projectStatus.ConfigStatus.Text.Color = theme.SuccessColor()
+	}
 
 	appendProjectToMainWindow(projectStatus, uprojectPath)
 }

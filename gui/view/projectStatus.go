@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/miltoncandelero/ugsg/gui/assets"
 )
 
 type ProjectStatus struct {
@@ -78,7 +79,7 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 	repositoryTitleLabel.Alignment = fyne.TextAlignCenter
 	repositoryTitleLabel.TextSize = theme.TextSubHeadingSize()
 
-	pstatus.RepoOrigin = MakeIconText("Origin", theme.FileIcon())
+	pstatus.RepoOrigin = MakeIconText("Origin", assets.ResGitlabSvg)
 	pstatus.RepoUser = MakeIconText("User", theme.AccountIcon())
 	pstatus.FixUserLink = widget.NewHyperlink("Fix User", nil)
 	pstatus.FixUserLinkCallback = func() {}
@@ -131,6 +132,7 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 				&layout.Spacer{FixVertical: true},
 				repositoryTitleLabel,
 				widget.NewSeparator(),
+				pstatus.RepoOrigin,
 				container.NewHBox(pstatus.RepoStatus, pstatus.RepoAhead, pstatus.RepoBehind),
 				pstatus.RepoBranch,
 				container.NewHBox(pstatus.RepoUser, pstatus.FixUserLink),

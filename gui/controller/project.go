@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"github.com/miltoncandelero/ugsg/core"
+	"github.com/miltoncandelero/ugsg/gui/assets"
 	"github.com/miltoncandelero/ugsg/gui/view"
 	"github.com/ncruces/zenity"
 )
@@ -39,6 +40,16 @@ func UProjectOpened(uprojectPath string) {
 	projectStatus.ProjectTitle.Text = strings.ReplaceAll(filepath.Base(uprojectPath), ".uproject", "")
 	projectStatus.Subtitle.Text = uprojectPath
 	projectStatus.RepoOrigin.Text.Text = core.GetRepoOrigin(repoPath)
+	switch core.GetGitProviderName(repoPath) {
+	case "GitHub":
+		projectStatus.RepoOrigin.SetIcon(assets.ResGithubSvg)
+	case "GitLab":
+		projectStatus.RepoOrigin.SetIcon(assets.ResGitlabSvg)
+	case "Gitea":
+		projectStatus.RepoOrigin.SetIcon(assets.ResGiteaSvg)
+	default:
+		projectStatus.RepoOrigin.SetIcon(assets.ResGitSvg)
+	}
 	projectStatus.RepoUser.Text.Text = core.GetUsernameFromRepo(repoPath) + " (" + core.GetUserEmailFromRepo(repoPath) + ")"
 	ahead, behind, _ := core.GetAheadBehind(repoPath)
 	projectStatus.RepoAhead.Text.Text = strconv.Itoa(ahead)
@@ -46,13 +57,16 @@ func UProjectOpened(uprojectPath string) {
 	switch core.GetGitConfigStatus(repoPath) {
 	case core.FILE_MISSING:
 		projectStatus.ConfigStatus.Text.Text = "Missing"
-		projectStatus.ConfigStatus.Text.Color = theme.WarningColor()
+		projectStatus.ConfigStatus.SetColor(theme.ColorNameWarning)
+		projectStatus.ConfigStatus.SetIcon(theme.QuestionIcon())
 	case core.FILE_EXIST_BUT_NOT_LINKED:
 		projectStatus.ConfigStatus.Text.Text = "Not linked"
-		projectStatus.ConfigStatus.Text.Color = theme.ErrorColor()
+		projectStatus.ConfigStatus.SetColor(theme.ColorNameError)
+		projectStatus.ConfigStatus.SetIcon(theme.ErrorIcon())
 	case core.FILE_LINKED:
 		projectStatus.ConfigStatus.Text.Text = "Linked"
-		projectStatus.ConfigStatus.Text.Color = theme.SuccessColor()
+		projectStatus.ConfigStatus.SetColor(theme.ColorNameSuccess)
+		projectStatus.ConfigStatus.SetIcon(theme.ConfirmIcon())
 	}
 
 	appendProjectToMainWindow(projectStatus, uprojectPath)

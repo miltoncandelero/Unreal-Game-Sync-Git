@@ -221,7 +221,7 @@ func GetGitProviderName(repoPath string) string {
 
 func GetRepoOrigin(repoPath string) string {
 	remotes, _ := ExecuteOneLine(repoPath, GIT, "remote", "get-url", "origin")
-	return remotes
+	return strings.TrimSpace(remotes)
 }
 
 func FinishRebase(repoPath string) error {

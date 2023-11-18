@@ -154,8 +154,36 @@ func GetCurrentBranchFromRepository(repository *git.Repository) (string, error) 
 }
 
 func LinkGitConfig(repoPath string) error {
+	if !FileExists(filepath.Join(repoPath, ".gitconfig")) {
+		return errors.New(".gitconfig file missing!")
+	}
+
 	_, err := Execute(repoPath, GIT, "config", "--local", "include.path", ".gitconfig")
 	return err
+}
+
+func CreateGitConfig(repoPath string) error {
+	if FileExists(filepath.Join(repoPath, ".gitconfig")) {
+		return errors.New(".gitconfig already exists!")
+	}
+
+	f, err := os.Create(filepath.Join(repoPath, ".gitconfig"))
+
+	if err != nil {
+		return err
+	}
+
+	_, err2 := f.WriteString(GetConfigString())
+
+	if err2 != nil {
+		return err2
+	}
+
+	f.Close()
+
+	LinkGitConfig(repoPath)
+
+	return nil
 }
 
 type GitConfigStatus int
@@ -167,11 +195,11 @@ const (
 )
 
 func GetGitConfigStatus(repoPath string) GitConfigStatus {
-	_, err := os.Stat(filepath.Join(repoPath, ".gitconfig"))
-	if err != nil {
+	exists := FileExists(filepath.Join(repoPath, ".gitconfig"))
+	if !exists {
 		return FILE_MISSING
 	}
-	_, err = Execute(repoPath, GIT, "config", "--local", "include.path")
+	_, err := Execute(repoPath, GIT, "config", "--local", "include.path")
 	if err != nil {
 		return FILE_EXIST_BUT_NOT_LINKED
 	}
@@ -179,12 +207,12 @@ func GetGitConfigStatus(repoPath string) GitConfigStatus {
 	return FILE_LINKED
 }
 
-func NeedsCredentials(repoPath string) bool {
-	username, _ := ExecuteOneLine(repoPath, GIT, "config", "user.name")
+func NeedsUsernameFix(repoPath string) bool {
+	username, _ := ExecuteOneLine(repoPath, GIT, "config", "--local", "user.name")
 	if username == "" {
 		return true
 	}
-	email, _ := ExecuteOneLine(repoPath, GIT, "config", "user.email")
+	email, _ := ExecuteOneLine(repoPath, GIT, "config", "--local", "user.email")
 	if email == "" {
 		return true
 	}
@@ -192,13 +220,25 @@ func NeedsCredentials(repoPath string) bool {
 }
 
 func GetUsernameFromRepo(repoPath string) string {
-	username, _ := ExecuteOneLine(repoPath, GIT, "config", "user.name")
+	username, _ := ExecuteOneLine(repoPath, GIT, "config", "--local", "user.name")
 	return strings.TrimSpace(username)
 }
 
 func GetUserEmailFromRepo(repoPath string) string {
-	email, _ := ExecuteOneLine(repoPath, GIT, "config", "user.email")
+	email, _ := ExecuteOneLine(repoPath, GIT, "config", "--local", "user.email")
 	return strings.TrimSpace(email)
+}
+
+func SetUsernameAndEmail(repoPath string, username string, email string) error {
+	_, err := ExecuteOneLine(repoPath, GIT, "config", "--local", "user.name", username)
+	if err != nil {
+		return err
+	}
+	_, err2 := ExecuteOneLine(repoPath, GIT, "config", "--local", "user.email", email)
+	if err2 != nil {
+		return err2
+	}
+	return nil
 }
 
 func GetGitProviderName(repoPath string) string {

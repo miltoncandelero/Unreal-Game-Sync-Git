@@ -3,7 +3,6 @@ package view
 import (
 	"fmt"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -12,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/miltoncandelero/ugsg/core"
 	"github.com/skratchdot/open-golang/open"
 )
 
@@ -57,8 +57,8 @@ func (card *ProjectCard) SetProject(projectFile string, callback func(string), r
 	}
 
 	//check if file exists
-	_, err := os.Stat(card.ProjectFile)
-	if err != nil {
+	exists := core.FileExists(card.ProjectFile)
+	if !exists {
 		card.Subtitle.Text = card.Subtitle.Text + " (File not found!)"
 		card.Subtitle.Color = theme.ErrorColor()
 		card.Button.Disable()

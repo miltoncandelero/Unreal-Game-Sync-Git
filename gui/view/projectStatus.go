@@ -82,7 +82,8 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 	pstatus.RepoOrigin = MakeIconText("Origin", assets.ResGitlabSvg)
 	pstatus.RepoUser = MakeIconText("User", theme.AccountIcon())
 	pstatus.FixUserLink = widget.NewHyperlink("Fix User", nil)
-	pstatus.FixUserLinkCallback = func() {}
+	pstatus.FixUserLink.OnTapped = func() { pstatus.FixUserLinkCallback() }
+	// pstatus.FixUserLinkCallback = func() {  }
 
 	pstatus.RepoStatus = MakeIconText("Status", theme.QuestionIcon())
 	pstatus.RepoAhead = MakeIconText("32", theme.MenuDropUpIcon())
@@ -93,7 +94,8 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 	pstatus.SwapBranchCallback = func(string) string { return "" }
 	pstatus.ConfigStatus = MakeIconText("Config", theme.QuestionIcon())
 	pstatus.FixConfigLink = widget.NewHyperlink("Fix Config", nil)
-	pstatus.FixConfigLinkCallback = func() {}
+	pstatus.FixConfigLink.OnTapped = func() { pstatus.FixConfigLinkCallback() }
+	// pstatus.FixConfigLinkCallback = func() {}
 	pstatus.PullButton = widget.NewButtonWithIcon("Pull", theme.MenuDropDownIcon(), nil)
 	pstatus.PullButtonCallback = func() {}
 	pstatus.SyncButton = widget.NewButtonWithIcon("Sync", theme.ViewRefreshIcon(), nil)

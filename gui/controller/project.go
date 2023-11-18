@@ -50,26 +50,76 @@ func UProjectOpened(uprojectPath string) {
 	default:
 		projectStatus.RepoOrigin.SetIcon(assets.ResGitSvg)
 	}
-	projectStatus.RepoUser.Text.Text = core.GetUsernameFromRepo(repoPath) + " (" + core.GetUserEmailFromRepo(repoPath) + ")"
+
 	ahead, behind, _ := core.GetAheadBehind(repoPath)
 	projectStatus.RepoAhead.Text.Text = strconv.Itoa(ahead)
 	projectStatus.RepoBehind.Text.Text = strconv.Itoa(behind)
+
+	refreshUserData(projectStatus, repoPath)
+	refreshConfigStatus(projectStatus, repoPath)
+
+	appendProjectToMainWindow(projectStatus, uprojectPath)
+}
+
+func refreshUserData(projectStatus *view.ProjectStatus, repoPath string) {
+	if core.NeedsUsernameFix(repoPath) {
+		projectStatus.RepoUser.Text.Text = "Username missing!"
+		projectStatus.RepoUser.SetIcon(theme.ErrorIcon())
+		projectStatus.RepoUser.SetColor(theme.ColorNameError)
+		projectStatus.FixUserLink.Text = "Fix"
+	} else {
+		projectStatus.RepoUser.Text.Text = core.GetUsernameFromRepo(repoPath) + " (" + core.GetUserEmailFromRepo(repoPath) + ")"
+		projectStatus.RepoUser.SetIcon(theme.AccountIcon())
+		projectStatus.RepoUser.SetColor(theme.ColorNameForeground)
+		projectStatus.FixUserLink.Text = "Change"
+	}
+	projectStatus.FixUserLinkCallback = func() {
+		ShowUsernameEmailDialog(core.GetGitProviderName(repoPath),
+			func(username string, email string) error {
+				err := core.SetUsernameAndEmail(repoPath, username, email)
+				if err != nil {
+					return err
+				}
+				refreshUserData(projectStatus, repoPath)
+				return nil
+			})
+	}
+}
+
+func refreshConfigStatus(projectStatus *view.ProjectStatus, repoPath string) {
 	switch core.GetGitConfigStatus(repoPath) {
 	case core.FILE_MISSING:
-		projectStatus.ConfigStatus.Text.Text = "Missing"
+		projectStatus.ConfigStatus.Text.Text = "Missing .gitconfig file"
 		projectStatus.ConfigStatus.SetColor(theme.ColorNameWarning)
 		projectStatus.ConfigStatus.SetIcon(theme.QuestionIcon())
+		projectStatus.FixConfigLink.Text = "Create"
+		projectStatus.FixConfigLink.Show()
+		projectStatus.FixConfigLinkCallback = func() {
+			err := core.CreateGitConfig(repoPath)
+			if err != nil {
+				ShowErrorDialog(err)
+			}
+			refreshConfigStatus(projectStatus, repoPath)
+		}
 	case core.FILE_EXIST_BUT_NOT_LINKED:
-		projectStatus.ConfigStatus.Text.Text = "Not linked"
+		projectStatus.ConfigStatus.Text.Text = "Found but not installed!"
 		projectStatus.ConfigStatus.SetColor(theme.ColorNameError)
 		projectStatus.ConfigStatus.SetIcon(theme.ErrorIcon())
+		projectStatus.FixConfigLink.Text = "Fix"
+		projectStatus.FixConfigLink.Show()
+		projectStatus.FixConfigLinkCallback = func() {
+			err := core.LinkGitConfig(repoPath)
+			if err != nil {
+				ShowErrorDialog(err)
+			}
+			refreshConfigStatus(projectStatus, repoPath)
+		}
 	case core.FILE_LINKED:
 		projectStatus.ConfigStatus.Text.Text = "Linked"
 		projectStatus.ConfigStatus.SetColor(theme.ColorNameSuccess)
 		projectStatus.ConfigStatus.SetIcon(theme.ConfirmIcon())
+		projectStatus.FixConfigLink.Hide()
 	}
-
-	appendProjectToMainWindow(projectStatus, uprojectPath)
 }
 
 func openFilePickerUproject() {

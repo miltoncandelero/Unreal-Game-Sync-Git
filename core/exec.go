@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/go-cmd/cmd"
 )
 
 var (
@@ -36,9 +38,9 @@ func (e ErrExec) Error() string {
 	)
 }
 
-func Execute(workingDir, cmd string, args ...string) ([]string, error) {
+func Execute(workingDir, command string, args ...string) ([]string, error) {
 
-	outStr, err := ExecuteOneLine(workingDir, cmd, args...)
+	outStr, err := ExecuteOneLine(workingDir, command, args...)
 
 	if err != nil {
 		return nil, err
@@ -52,13 +54,13 @@ func Execute(workingDir, cmd string, args ...string) ([]string, error) {
 	return lines, nil
 }
 
-func ExecuteOneLine(workingDir, cmd string, args ...string) (string, error) {
-	_, err := exec.LookPath(cmd)
+func ExecuteOneLine(workingDir, command string, args ...string) (string, error) {
+	_, err := exec.LookPath(command)
 	if err != nil {
-		return "", fmt.Errorf("%w: %s", ErrApplicationNotFound, cmd)
+		return "", fmt.Errorf("%w: %s", ErrApplicationNotFound, command)
 	}
 
-	c := exec.Command(cmd, args...)
+	c := exec.Command(command, args...)
 	if workingDir != "" {
 		c.Dir = workingDir
 	}
@@ -79,11 +81,28 @@ func ExecuteOneLine(workingDir, cmd string, args ...string) (string, error) {
 			ExitCode:  c.ProcessState.ExitCode(),
 			Output:    strings.TrimSpace(combinedOut.String()),
 			ErrOutput: strings.TrimSpace(stderrBuf.String()),
-			Cmd:       cmd,
+			Cmd:       command,
 			Args:      args,
 		}
 	}
 
 	outStr := combinedOut.String()
 	return outStr, nil
+}
+
+func ExecuteNonBlocking(workingDir, command string, args ...string) (*cmd.Cmd, <-chan cmd.Status, error) {
+	_, err := exec.LookPath(command)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %s", ErrApplicationNotFound, command)
+	}
+
+	c := cmd.NewCmd(command, args...)
+	if workingDir != "" {
+		c.Dir = workingDir
+	}
+	c.Env = os.Environ()
+
+	statusChan := c.Start()
+
+	return c, statusChan, nil
 }

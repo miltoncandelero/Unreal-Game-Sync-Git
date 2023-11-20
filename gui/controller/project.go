@@ -51,10 +51,7 @@ func UProjectOpened(uprojectPath string) {
 		projectStatus.RepoOrigin.SetIcon(assets.ResGitSvg)
 	}
 
-	ahead, behind, _ := core.GetAheadBehind(repoPath)
-	projectStatus.RepoAhead.Text.Text = strconv.Itoa(ahead)
-	projectStatus.RepoBehind.Text.Text = strconv.Itoa(behind)
-
+	refreshProjectStatus(projectStatus, repoPath)
 	refreshUserData(projectStatus, repoPath)
 	refreshConfigStatus(projectStatus, repoPath)
 
@@ -88,8 +85,8 @@ func refreshUserData(projectStatus *view.ProjectStatus, repoPath string) {
 
 func refreshConfigStatus(projectStatus *view.ProjectStatus, repoPath string) {
 	switch core.GetGitConfigStatus(repoPath) {
-	case core.FILE_MISSING:
-		projectStatus.ConfigStatus.Text.Text = "Missing .gitconfig file"
+	case core.CONFIG_STATUS_MISSING:
+		projectStatus.ConfigStatus.Text.Text = ".gitconfig missing"
 		projectStatus.ConfigStatus.SetColor(theme.ColorNameWarning)
 		projectStatus.ConfigStatus.SetIcon(theme.QuestionIcon())
 		projectStatus.FixConfigLink.Text = "Create"
@@ -101,8 +98,8 @@ func refreshConfigStatus(projectStatus *view.ProjectStatus, repoPath string) {
 			}
 			refreshConfigStatus(projectStatus, repoPath)
 		}
-	case core.FILE_EXIST_BUT_NOT_LINKED:
-		projectStatus.ConfigStatus.Text.Text = "Found but not installed!"
+	case core.CONFIG_STATUS_NOT_LINKED:
+		projectStatus.ConfigStatus.Text.Text = ".gitconfig found but not installed!"
 		projectStatus.ConfigStatus.SetColor(theme.ColorNameError)
 		projectStatus.ConfigStatus.SetIcon(theme.ErrorIcon())
 		projectStatus.FixConfigLink.Text = "Fix"
@@ -114,11 +111,83 @@ func refreshConfigStatus(projectStatus *view.ProjectStatus, repoPath string) {
 			}
 			refreshConfigStatus(projectStatus, repoPath)
 		}
-	case core.FILE_LINKED:
-		projectStatus.ConfigStatus.Text.Text = "Linked"
+	case core.CONFIG_STATUS_LINKED:
+		projectStatus.ConfigStatus.Text.Text = ".gitconfig linked"
 		projectStatus.ConfigStatus.SetColor(theme.ColorNameSuccess)
 		projectStatus.ConfigStatus.SetIcon(theme.ConfirmIcon())
 		projectStatus.FixConfigLink.Hide()
+	}
+}
+
+func refreshProjectStatus(projectStatus *view.ProjectStatus, repoPath string) {
+	status := core.GetGitStatus(repoPath)
+	switch status {
+	case core.GIT_STATUS_OK:
+		projectStatus.RepoStatus.Text.Text = "Repo ok"
+		projectStatus.RepoStatus.SetColor(theme.ColorNameSuccess)
+		projectStatus.RepoStatus.SetIcon(theme.ConfirmIcon())
+		projectStatus.FixRepoStatusLink.Hide()
+	case core.GIT_STATUS_SHALLOW:
+		projectStatus.RepoStatus.Text.Text = "Repo is shallow!"
+		projectStatus.RepoStatus.SetColor(theme.ColorNameWarning)
+		projectStatus.RepoStatus.SetIcon(theme.WarningIcon())
+		projectStatus.FixRepoStatusLink.Text = "unshallow"
+		projectStatus.FixRepoStatusLink.Show()
+		projectStatus.FixRepoStatusCallback = func() {
+			err := core.UnshallowRepo(repoPath)
+			if err != nil {
+				ShowErrorDialog(err)
+			}
+			refreshProjectStatus(projectStatus, repoPath)
+		}
+	case core.GIT_STATUS_REBASE_CONTINUABLE:
+		projectStatus.RepoStatus.Text.Text = "Rebase underway, ready to continue"
+		projectStatus.RepoStatus.SetColor(theme.ColorNameForeground)
+		projectStatus.RepoStatus.SetIcon(theme.WarningIcon())
+		projectStatus.FixRepoStatusLink.Text = "continue"
+		projectStatus.FixRepoStatusLink.Show()
+		projectStatus.FixRepoStatusCallback = func() {
+			err := core.FinishRebase(repoPath)
+			if err != nil {
+				ShowErrorDialog(err)
+			}
+			refreshProjectStatus(projectStatus, repoPath)
+		}
+	case core.GIT_STATUS_REBASE_CONFLICTS:
+		projectStatus.RepoStatus.Text.Text = "Rebase underway, conflicts detected!"
+		projectStatus.RepoStatus.SetColor(theme.ColorNameError)
+		projectStatus.RepoStatus.SetIcon(theme.ErrorIcon())
+		projectStatus.FixRepoStatusLink.Text = "continue"
+		projectStatus.FixRepoStatusLink.Show()
+		projectStatus.FixRepoStatusCallback = func() {
+			err := core.FinishRebase(repoPath)
+			if err != nil {
+				ShowErrorDialog(err)
+			}
+			refreshProjectStatus(projectStatus, repoPath)
+		}
+	case core.GIT_STATUS_LAST_COMMIT_MERGE:
+		projectStatus.RepoStatus.Text.Text = "Merge commit detected! This shouldn't have happened!"
+		projectStatus.RepoStatus.SetColor(theme.ColorNameWarning)
+		projectStatus.RepoStatus.SetIcon(theme.WarningIcon())
+		projectStatus.FixRepoStatusLink.Hide()
+	case core.GIT_STATUS_DEATACHED_HEAD:
+		projectStatus.RepoStatus.Text.Text = "Deatached head. Currently time travelling!"
+		projectStatus.RepoStatus.SetColor(theme.ColorNameWarning)
+		projectStatus.RepoStatus.SetIcon(theme.WarningIcon())
+		projectStatus.FixRepoStatusLink.Hide()
+	}
+
+	ahead, behind, _ := core.GetAheadBehind(repoPath)
+	projectStatus.RepoAhead.Text.Text = strconv.Itoa(ahead)
+	projectStatus.RepoBehind.Text.Text = strconv.Itoa(behind)
+
+	changes := core.GetWorkingTreeChangeAmount(repoPath)
+	if changes == 0 {
+		projectStatus.RepoWorkingTree.Hide()
+	} else {
+		projectStatus.RepoWorkingTree.Show()
+		projectStatus.RepoWorkingTree.Text.Text = strconv.Itoa(changes)
 	}
 }
 

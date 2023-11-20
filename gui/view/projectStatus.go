@@ -28,8 +28,11 @@ type ProjectStatus struct {
 	FixUserLink           *widget.Hyperlink
 	FixUserLinkCallback   func()
 	RepoStatus            *IconText
+	FixRepoStatusLink     *widget.Hyperlink
+	FixRepoStatusCallback func()
 	RepoAhead             *IconText
 	RepoBehind            *IconText
+	RepoWorkingTree       *IconText
 	RepoBranch            *widget.Select
 	SwapBranchCallback    func(string) string
 	ConfigStatus          *IconText
@@ -86,10 +89,14 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 	// pstatus.FixUserLinkCallback = func() {  }
 
 	pstatus.RepoStatus = MakeIconText("Status", theme.QuestionIcon())
+	pstatus.FixRepoStatusLink = widget.NewHyperlink("Fix Status", nil)
+	pstatus.FixRepoStatusLink.OnTapped = func() { pstatus.FixRepoStatusCallback() }
 	pstatus.RepoAhead = MakeIconText("32", theme.MenuDropUpIcon())
 	pstatus.RepoAhead.SetColor(theme.ColorNameSuccess)
 	pstatus.RepoBehind = MakeIconText("12", theme.MenuDropDownIcon())
 	pstatus.RepoBehind.SetColor(theme.ColorNameError)
+	pstatus.RepoWorkingTree = MakeIconText("13", theme.DocumentSaveIcon())
+	pstatus.RepoWorkingTree.SetColor(theme.ColorNameWarning)
 	pstatus.RepoBranch = widget.NewSelect([]string{"Branch"}, func(string) {})
 	pstatus.SwapBranchCallback = func(string) string { return "" }
 	pstatus.ConfigStatus = MakeIconText("Config", theme.QuestionIcon())
@@ -135,8 +142,8 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 				repositoryTitleLabel,
 				widget.NewSeparator(),
 				pstatus.RepoOrigin,
-				container.NewHBox(pstatus.RepoStatus, pstatus.RepoAhead, pstatus.RepoBehind),
 				pstatus.RepoBranch,
+				container.NewHBox(pstatus.RepoStatus, pstatus.FixRepoStatusLink, widget.NewSeparator(), pstatus.RepoAhead, pstatus.RepoBehind, widget.NewSeparator(), pstatus.RepoWorkingTree),
 				container.NewHBox(pstatus.RepoUser, pstatus.FixUserLink),
 				container.NewHBox(pstatus.ConfigStatus, pstatus.FixConfigLink),
 				widget.NewSeparator(),

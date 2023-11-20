@@ -34,6 +34,7 @@ type CommitDatum struct {
 
 const GIT = "git"
 const SEP = "§"
+const ORIGIN = "origin"
 
 var SOURCE_REGEX = regexp.MustCompile(`.*(\\|\/)?Source((\\|\/).*)?`)
 var CONTENT_REGEX = regexp.MustCompile(`.*(\\|\/)?Content((\\|\/).*)?`)
@@ -189,22 +190,22 @@ func CreateGitConfig(repoPath string) error {
 type GitConfigStatus int
 
 const (
-	FILE_MISSING GitConfigStatus = iota
-	FILE_EXIST_BUT_NOT_LINKED
-	FILE_LINKED
+	CONFIG_STATUS_MISSING GitConfigStatus = iota
+	CONFIG_STATUS_NOT_LINKED
+	CONFIG_STATUS_LINKED
 )
 
 func GetGitConfigStatus(repoPath string) GitConfigStatus {
 	exists := FileExists(filepath.Join(repoPath, ".gitconfig"))
 	if !exists {
-		return FILE_MISSING
+		return CONFIG_STATUS_MISSING
 	}
 	_, err := Execute(repoPath, GIT, "config", "--local", "include.path")
 	if err != nil {
-		return FILE_EXIST_BUT_NOT_LINKED
+		return CONFIG_STATUS_NOT_LINKED
 	}
 
-	return FILE_LINKED
+	return CONFIG_STATUS_LINKED
 }
 
 func NeedsUsernameFix(repoPath string) bool {
@@ -244,7 +245,7 @@ func SetUsernameAndEmail(repoPath string, username string, email string) error {
 func GetGitProviderName(repoPath string) string {
 	// Probably fails if you have many remotes
 
-	remotes, _ := ExecuteOneLine(repoPath, GIT, "remote", "get-url", "origin")
+	remotes, _ := ExecuteOneLine(repoPath, GIT, "remote", "get-url", ORIGIN)
 
 	if strings.Contains(remotes, "github") {
 		return "GitHub"
@@ -260,7 +261,7 @@ func GetGitProviderName(repoPath string) string {
 }
 
 func GetRepoOrigin(repoPath string) string {
-	remotes, _ := ExecuteOneLine(repoPath, GIT, "remote", "get-url", "origin")
+	remotes, _ := ExecuteOneLine(repoPath, GIT, "remote", "get-url", ORIGIN)
 	return strings.TrimSpace(remotes)
 }
 
@@ -309,9 +310,21 @@ func UnshallowRepo(repoPath string) error {
 	return nil
 }
 
-func IsWorkingTreeClean(repoPath string) bool {
-	status, _ := ExecuteOneLine(repoPath, GIT, "status", "--porcelain")
-	return status == ""
+func GetWorkingTreeChangeAmount(repoPath string) int {
+	lines, _ := Execute(repoPath, GIT, "status", "--porcelain")
+	if len(lines) == 0 || lines[0] == "" {
+		return 0
+	}
+
+	//count non empty lines, is there a better way?
+	count := 0
+	for _, line := range lines {
+		if line != "" {
+			count++
+		}
+	}
+
+	return count
 }
 
 func GetAheadBehind(repoPath string) (int, int, error) {
@@ -396,4 +409,69 @@ func IsDeatachedHead(repoPath string) bool {
 	//git symbolic-ref -q HEAD
 	_, err := ExecuteOneLine(repoPath, GIT, "symbolic-ref", "-q", "HEAD")
 	return err != nil
+}
+
+type GitStatus int
+
+const (
+	GIT_STATUS_OK GitStatus = iota
+	GIT_STATUS_SHALLOW
+	GIT_STATUS_DEATACHED_HEAD
+	GIT_STATUS_LAST_COMMIT_MERGE
+	GIT_STATUS_REBASE_CONTINUABLE
+	GIT_STATUS_REBASE_CONFLICTS
+)
+
+func GetGitStatus(repoPath string) GitStatus {
+
+	if IsShallowRepo(repoPath) {
+		return GIT_STATUS_SHALLOW
+	}
+
+	if IsDeatachedHead(repoPath) {
+		return GIT_STATUS_DEATACHED_HEAD
+	}
+
+	ahead, _, _ := GetAheadBehind(repoPath)
+	if ahead > 0 {
+		if IsMergeCommit(repoPath, "") {
+			// This shouldn't have happened! :(
+			return GIT_STATUS_LAST_COMMIT_MERGE
+		}
+	}
+
+	// Non porcelain command but there is no way to know if we are mid rebase :(
+	currentStatus, _ := ExecuteOneLine(repoPath, GIT, "status", "-uno")
+	if strings.Contains(currentStatus, "rebase") {
+		if strings.Contains(currentStatus, "git rebase --continue") ||
+			strings.Contains(currentStatus, "nothing to commit") ||
+			strings.Contains(currentStatus, "all conflicts fixed") {
+
+			// We should be able to continue the rebase
+			return GIT_STATUS_REBASE_CONTINUABLE
+		} else {
+			// We are in a rebase but we have conflicts, this is baaaad
+			return GIT_STATUS_REBASE_CONFLICTS
+		}
+	}
+
+	return GIT_STATUS_OK
+}
+
+func IsMergeCommit(repoPath string, hash string) bool {
+	if hash == "" {
+		hash = "HEAD"
+	}
+	lines, _ := Execute(repoPath, GIT, "cat-file", "-p", hash)
+	countParents := 0
+	if len(lines) < 3 {
+		return false
+	}
+	for i := 0; i < 3; i++ {
+		if strings.HasPrefix(lines[i], "parent ") {
+			countParents++
+		}
+	}
+
+	return countParents > 1
 }

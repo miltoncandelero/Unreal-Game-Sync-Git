@@ -1,6 +1,11 @@
 package controller
 
 import (
+	"image/color"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
@@ -18,6 +23,16 @@ func ShowErrorDialog(err error) {
 		return
 	}
 	dialog.ShowError(err, GetApp().Window)
+}
+
+func ShowLoadingDialog(title string) *dialog.CustomDialog {
+	bar := widget.NewProgressBarInfinite()
+	rect := canvas.NewRectangle(color.Transparent)
+	rect.SetMinSize(fyne.NewSize(200, 0))
+	stack := container.NewStack(rect, bar)
+	d := dialog.NewCustomWithoutButtons(title, stack, GetApp().Window)
+	d.Show()
+	return d
 }
 
 func ShowUsernameEmailDialog(provider string, callback func(string, string) error) {

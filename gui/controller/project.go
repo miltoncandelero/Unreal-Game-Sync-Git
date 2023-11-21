@@ -13,10 +13,13 @@ import (
 	"github.com/miltoncandelero/ugsg/gui/assets"
 	"github.com/miltoncandelero/ugsg/gui/view"
 	"github.com/ncruces/zenity"
+	"github.com/skratchdot/open-golang/open"
 )
 
 func UProjectOpened(uprojectPath string) {
-	fmt.Println("Opening", uprojectPath)
+	d := ShowLoadingDialog("Opening...")
+	defer d.Hide()
+
 	repoPath := filepath.Dir(uprojectPath)
 	if !core.IsPathRepo(repoPath) {
 		// This is not a repo! panic
@@ -41,10 +44,17 @@ func UProjectOpened(uprojectPath string) {
 	projectStatus.ProjectTitle.Text = strings.ReplaceAll(filepath.Base(uprojectPath), ".uproject", "")
 	projectStatus.Subtitle.Text = uprojectPath
 	projectStatus.RefreshButtonCallback = func() {
+		d := ShowLoadingDialog("Refreshing...")
+		defer d.Hide()
 		refreshProject(projectStatus, repoPath)
+	}
+	projectStatus.ExploreButtonCallback = func() {
+		open.Start(repoPath)
 	}
 
 	projectStatus.PullButtonCallback = func() {
+		d := ShowLoadingDialog("Pulling...")
+		defer d.Hide()
 		defer refreshProject(projectStatus, repoPath)
 		if core.GetGitStatus(repoPath) != core.GIT_STATUS_OK {
 			ShowErrorDialog(fmt.Errorf("Repo not ok. Can't pull"))
@@ -56,6 +66,8 @@ func UProjectOpened(uprojectPath string) {
 		}
 	}
 	projectStatus.SyncButtonCallback = func() {
+		d := ShowLoadingDialog("Syncing...")
+		defer d.Hide()
 		defer refreshProject(projectStatus, repoPath)
 		if core.GetGitStatus(repoPath) != core.GIT_STATUS_OK {
 			ShowErrorDialog(fmt.Errorf("Repo not ok. Can't sync"))
@@ -94,16 +106,15 @@ func UProjectOpened(uprojectPath string) {
 		projectStatus.RepoOrigin.SetIcon(assets.ResGitSvg)
 	}
 
-	appendProjectToMainWindow(projectStatus, uprojectPath)
-
 	refreshProject(projectStatus, repoPath)
+
+	appendProjectToMainWindow(projectStatus, uprojectPath)
 }
 
 func refreshProject(projectStatus *view.ProjectStatus, repoPath string) {
-	projectStatus.RefreshButton.Disable()
-	defer projectStatus.RefreshButton.Enable()
-
 	refreshRepo(projectStatus, repoPath)
+	// refresh build
+	// reresh other stuff?
 }
 
 func refreshRepo(projectStatus *view.ProjectStatus, repoPath string) {
@@ -118,12 +129,12 @@ func refreshRepoUserData(projectStatus *view.ProjectStatus, repoPath string) {
 		projectStatus.RepoUser.SetText("Username missing!")
 		projectStatus.RepoUser.SetIcon(theme.ErrorIcon())
 		projectStatus.RepoUser.SetColor(theme.ColorNameError)
-		projectStatus.FixUserLink.Text = "Fix"
+		projectStatus.FixUserLink.SetText("Fix")
 	} else {
 		projectStatus.RepoUser.SetText(core.GetUsernameFromRepo(repoPath) + " (" + core.GetUserEmailFromRepo(repoPath) + ")")
 		projectStatus.RepoUser.SetIcon(theme.AccountIcon())
 		projectStatus.RepoUser.SetColor(theme.ColorNameForeground)
-		projectStatus.FixUserLink.Text = "Change"
+		projectStatus.FixUserLink.SetText("Change")
 	}
 	projectStatus.FixUserLinkCallback = func() {
 		ShowUsernameEmailDialog(core.GetGitProviderName(repoPath),
@@ -144,7 +155,7 @@ func refreshRepoConfigStatus(projectStatus *view.ProjectStatus, repoPath string)
 		projectStatus.ConfigStatus.SetText(".gitconfig missing")
 		projectStatus.ConfigStatus.SetColor(theme.ColorNameWarning)
 		projectStatus.ConfigStatus.SetIcon(theme.QuestionIcon())
-		projectStatus.FixConfigLink.Text = "Create"
+		projectStatus.FixConfigLink.SetText("Create")
 		projectStatus.FixConfigLink.Show()
 		projectStatus.FixConfigLinkCallback = func() {
 			err := core.CreateGitConfig(repoPath)
@@ -157,7 +168,7 @@ func refreshRepoConfigStatus(projectStatus *view.ProjectStatus, repoPath string)
 		projectStatus.ConfigStatus.SetText(".gitconfig found but not installed!")
 		projectStatus.ConfigStatus.SetColor(theme.ColorNameError)
 		projectStatus.ConfigStatus.SetIcon(theme.ErrorIcon())
-		projectStatus.FixConfigLink.Text = "Fix"
+		projectStatus.FixConfigLink.SetText("Fix")
 		projectStatus.FixConfigLink.Show()
 		projectStatus.FixConfigLinkCallback = func() {
 			err := core.LinkGitConfig(repoPath)
@@ -186,9 +197,11 @@ func refreshRepoStatus(projectStatus *view.ProjectStatus, repoPath string) {
 		projectStatus.RepoStatus.SetText("Repo is shallow!")
 		projectStatus.RepoStatus.SetColor(theme.ColorNameWarning)
 		projectStatus.RepoStatus.SetIcon(theme.WarningIcon())
-		projectStatus.FixRepoStatusLink.Text = "unshallow"
+		projectStatus.FixRepoStatusLink.SetText("unshallow")
 		projectStatus.FixRepoStatusLink.Show()
 		projectStatus.FixRepoStatusCallback = func() {
+			d := ShowLoadingDialog("Unshallowing (This will take a while)...")
+			defer d.Hide()
 			err := core.UnshallowRepo(repoPath)
 			if err != nil {
 				ShowErrorDialog(err)
@@ -199,9 +212,11 @@ func refreshRepoStatus(projectStatus *view.ProjectStatus, repoPath string) {
 		projectStatus.RepoStatus.SetText("Rebase underway, ready to continue")
 		projectStatus.RepoStatus.SetColor(theme.ColorNameForeground)
 		projectStatus.RepoStatus.SetIcon(theme.WarningIcon())
-		projectStatus.FixRepoStatusLink.Text = "continue"
+		projectStatus.FixRepoStatusLink.SetText("continue")
 		projectStatus.FixRepoStatusLink.Show()
 		projectStatus.FixRepoStatusCallback = func() {
+			d := ShowLoadingDialog("Rebasing...")
+			defer d.Hide()
 			err := core.FinishRebase(repoPath)
 			if err != nil {
 				ShowErrorDialog(err)
@@ -212,9 +227,11 @@ func refreshRepoStatus(projectStatus *view.ProjectStatus, repoPath string) {
 		projectStatus.RepoStatus.SetText("Rebase underway, conflicts detected!")
 		projectStatus.RepoStatus.SetColor(theme.ColorNameError)
 		projectStatus.RepoStatus.SetIcon(theme.ErrorIcon())
-		projectStatus.FixRepoStatusLink.Text = "continue"
+		projectStatus.FixRepoStatusLink.SetText("continue")
 		projectStatus.FixRepoStatusLink.Show()
 		projectStatus.FixRepoStatusCallback = func() {
+			d := ShowLoadingDialog("Rebasing...")
+			defer d.Hide()
 			err := core.FinishRebase(repoPath)
 			if err != nil {
 				ShowErrorDialog(err)
@@ -230,8 +247,10 @@ func refreshRepoStatus(projectStatus *view.ProjectStatus, repoPath string) {
 		projectStatus.RepoStatus.SetText("Currently in a Flashback (Deatached HEAD)")
 		projectStatus.RepoStatus.SetColor(theme.ColorNameWarning)
 		projectStatus.RepoStatus.SetIcon(theme.WarningIcon())
-		projectStatus.FixRepoStatusLink.Text = "end Flashback"
+		projectStatus.FixRepoStatusLink.SetText("end Flashback")
 		projectStatus.FixRepoStatusCallback = func() {
+			d := ShowLoadingDialog("Returning...")
+			defer d.Hide()
 			err := core.ReturnToLastBranch(repoPath)
 			if err != nil {
 				ShowErrorDialog(err)
@@ -277,34 +296,34 @@ func refreshRepoActions(projectStatus *view.ProjectStatus, repoPath string) {
 		projectStatus.SyncButton.Disable()
 		projectStatus.CommitButton.Disable()
 
-		projectStatus.PullButton.Text = "Repo not ok. Can't pull"
-		projectStatus.SyncButton.Text = "Repo not ok. Can't sync"
-		projectStatus.CommitButton.Text = "Repo not ok. Can't commit"
+		projectStatus.PullButton.SetText("Repo not ok. Can't pull")
+		projectStatus.SyncButton.SetText("Repo not ok. Can't sync")
+		projectStatus.CommitButton.SetText("Repo not ok. Can't commit")
 		return
 	}
 
 	if core.GetWorkingTreeChangeAmount(repoPath) > 0 {
-		projectStatus.CommitButton.Text = "Commit"
+		projectStatus.CommitButton.SetText("Commit")
 		projectStatus.CommitButton.Enable()
 	} else {
-		projectStatus.CommitButton.Text = "Nothing to commit"
+		projectStatus.CommitButton.SetText("Nothing to commit")
 		projectStatus.CommitButton.Disable()
 	}
 
 	ahead, behind, _ := core.GetAheadBehind(repoPath)
 	if behind > 0 {
-		projectStatus.PullButton.Text = "Pull"
+		projectStatus.PullButton.SetText("Pull")
 		projectStatus.PullButton.Enable()
 	} else {
-		projectStatus.PullButton.Text = "Nothing to pull"
+		projectStatus.PullButton.SetText("Nothing to pull")
 		projectStatus.PullButton.Disable()
 	}
 
 	if behind > 0 || ahead > 0 {
-		projectStatus.SyncButton.Text = "Sync"
+		projectStatus.SyncButton.SetText("Sync")
 		projectStatus.SyncButton.Enable()
 	} else {
-		projectStatus.SyncButton.Text = "Nothing to sync"
+		projectStatus.SyncButton.SetText("Nothing to sync")
 		projectStatus.SyncButton.Disable()
 	}
 

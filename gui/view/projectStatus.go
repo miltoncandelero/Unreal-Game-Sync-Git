@@ -16,10 +16,14 @@ type ProjectStatus struct {
 
 	Container *fyne.Container
 
-	ProjectTitle          *canvas.Text
-	Subtitle              *canvas.Text
-	RefreshButton         *widget.Button
-	RefreshButtonCallback func()
+	ProjectTitle           *canvas.Text
+	Subtitle               *canvas.Text
+	RefreshButton          *widget.ToolbarAction
+	RefreshButtonCallback  func()
+	ExploreButton          *widget.ToolbarAction
+	ExploreButtonCallback  func()
+	TerminalButton         *widget.ToolbarAction
+	TerminalButtonCallback func()
 
 	EngineVersion      *canvas.Text
 	SwapEngineButton   *widget.Button
@@ -75,7 +79,9 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 	pstatus.Subtitle = canvas.NewText("C:/Somewhere/over/the/rainbow", theme.ForegroundColor())
 	pstatus.Subtitle.TextSize = theme.TextSubHeadingSize()
 	pstatus.Subtitle.Alignment = fyne.TextAlignCenter
-	pstatus.RefreshButton = widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() { pstatus.RefreshButtonCallback() })
+	pstatus.RefreshButton = widget.NewToolbarAction(theme.ViewRefreshIcon(), func() { pstatus.RefreshButtonCallback() })
+	pstatus.ExploreButton = widget.NewToolbarAction(theme.FolderOpenIcon(), func() { pstatus.ExploreButtonCallback() })
+	pstatus.TerminalButton = widget.NewToolbarAction(assets.ResTerminalSvg, func() { pstatus.TerminalButtonCallback() })
 
 	pstatus.EngineVersion = canvas.NewText("Engine: 5.0.1", theme.ForegroundColor())
 	pstatus.SwapEngineButton = widget.NewButtonWithIcon("Swap Engine", theme.SearchReplaceIcon(), nil)
@@ -134,7 +140,7 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 	pstatus.Container = container.NewStack(container.NewVBox(
 		pstatus.ProjectTitle,
 		pstatus.Subtitle,
-		pstatus.RefreshButton,
+		widget.NewToolbar(widget.NewToolbarSpacer(), pstatus.RefreshButton, pstatus.ExploreButton, pstatus.TerminalButton, widget.NewToolbarSpacer()),
 		widget.NewSeparator(),
 		container.NewHBox(
 			&layout.Spacer{},

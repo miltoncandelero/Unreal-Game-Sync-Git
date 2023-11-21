@@ -126,7 +126,10 @@ func GetRepoBranchInfo(repoPath string, branchName string) ([]*CommitDatum, erro
 
 }
 
-func GetCurrentBranchFromRepository(repository *git.Repository) (string, error) {
+func GetCurrentBranchFromRepository(repoPath string) (string, error) {
+
+	repository, _ := git.PlainOpen(repoPath)
+
 	branchRefs, err := repository.Branches()
 	if err != nil {
 		return "", err
@@ -331,11 +334,11 @@ func GetAheadBehind(repoPath string) (int, int, error) {
 	statusLines, _ := Execute(repoPath, GIT, "status", "--porcelain=2", "--branch")
 	for _, line := range statusLines {
 		if strings.Contains(line, "# branch.ab ") {
-			strings.Replace(line, "# branch.ab ", "", 1)
-			ab := strings.Split(line, " ")
+			trimmed := strings.TrimSpace(strings.Replace(strings.TrimSpace(line), "# branch.ab", "", 1))
+			ab := strings.Split(trimmed, " ")
 			ahead, _ := strconv.Atoi(ab[0])
 			behind, _ := strconv.Atoi(ab[1])
-			return ahead, behind, nil
+			return ahead, -behind, nil
 		}
 	}
 	return 0, 0, errors.New("Could not find ahead/behind")
@@ -474,4 +477,9 @@ func IsMergeCommit(repoPath string, hash string) bool {
 	}
 
 	return countParents > 1
+}
+
+func ReturnToLastBranch(repoPath string) error {
+	_, err := ExecuteOneLine(repoPath, GIT, "switch", "-")
+	return err
 }

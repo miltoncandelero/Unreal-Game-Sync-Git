@@ -16,8 +16,11 @@ type ProjectStatus struct {
 
 	Container *fyne.Container
 
-	ProjectTitle       *canvas.Text
-	Subtitle           *canvas.Text
+	ProjectTitle          *canvas.Text
+	Subtitle              *canvas.Text
+	RefreshButton         *widget.Button
+	RefreshButtonCallback func()
+
 	EngineVersion      *canvas.Text
 	SwapEngineButton   *widget.Button
 	SwapEngineCallback func()
@@ -33,8 +36,7 @@ type ProjectStatus struct {
 	RepoAhead             *IconText
 	RepoBehind            *IconText
 	RepoWorkingTree       *IconText
-	RepoBranch            *widget.Select
-	SwapBranchCallback    func(string) string
+	RepoBranch            *IconText
 	ConfigStatus          *IconText
 	FixConfigLink         *widget.Hyperlink
 	FixConfigLinkCallback func()
@@ -73,6 +75,8 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 	pstatus.Subtitle = canvas.NewText("C:/Somewhere/over/the/rainbow", theme.ForegroundColor())
 	pstatus.Subtitle.TextSize = theme.TextSubHeadingSize()
 	pstatus.Subtitle.Alignment = fyne.TextAlignCenter
+	pstatus.RefreshButton = widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() { pstatus.RefreshButtonCallback() })
+
 	pstatus.EngineVersion = canvas.NewText("Engine: 5.0.1", theme.ForegroundColor())
 	pstatus.SwapEngineButton = widget.NewButtonWithIcon("Swap Engine", theme.SearchReplaceIcon(), nil)
 	pstatus.SwapEngineCallback = func() {}
@@ -91,24 +95,20 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 	pstatus.RepoStatus = MakeIconText("Status", theme.QuestionIcon())
 	pstatus.FixRepoStatusLink = widget.NewHyperlink("Fix Status", nil)
 	pstatus.FixRepoStatusLink.OnTapped = func() { pstatus.FixRepoStatusCallback() }
-	pstatus.RepoAhead = MakeIconText("32", theme.MenuDropUpIcon())
+	pstatus.RepoAhead = MakeIconText("32", theme.MoveUpIcon())
 	pstatus.RepoAhead.SetColor(theme.ColorNameSuccess)
-	pstatus.RepoBehind = MakeIconText("12", theme.MenuDropDownIcon())
+	pstatus.RepoBehind = MakeIconText("12", theme.MoveDownIcon())
 	pstatus.RepoBehind.SetColor(theme.ColorNameError)
 	pstatus.RepoWorkingTree = MakeIconText("13", theme.DocumentSaveIcon())
 	pstatus.RepoWorkingTree.SetColor(theme.ColorNameWarning)
-	pstatus.RepoBranch = widget.NewSelect([]string{"Branch"}, func(string) {})
-	pstatus.SwapBranchCallback = func(string) string { return "" }
+	pstatus.RepoBranch = MakeIconText("Branch", assets.ResBranchSvg)
 	pstatus.ConfigStatus = MakeIconText("Config", theme.QuestionIcon())
 	pstatus.FixConfigLink = widget.NewHyperlink("Fix Config", nil)
 	pstatus.FixConfigLink.OnTapped = func() { pstatus.FixConfigLinkCallback() }
-	// pstatus.FixConfigLinkCallback = func() {}
-	pstatus.PullButton = widget.NewButtonWithIcon("Pull", theme.MenuDropDownIcon(), nil)
-	pstatus.PullButtonCallback = func() {}
-	pstatus.SyncButton = widget.NewButtonWithIcon("Sync", theme.ViewRefreshIcon(), nil)
-	pstatus.SyncButtonCallback = func() {}
-	pstatus.CommitButton = widget.NewButtonWithIcon("Commit", theme.DocumentSaveIcon(), nil)
-	pstatus.CommitButtonCallback = func() {}
+
+	pstatus.PullButton = widget.NewButtonWithIcon("Pull", theme.MoveDownIcon(), func() { pstatus.PullButtonCallback() })
+	pstatus.SyncButton = widget.NewButtonWithIcon("Sync", theme.ViewRefreshIcon(), func() { pstatus.SyncButtonCallback() })
+	pstatus.CommitButton = widget.NewButtonWithIcon("Commit", theme.DocumentSaveIcon(), func() { pstatus.CommitButtonCallback() })
 
 	// Build manager buttons
 	buildTitleLabel := canvas.NewText("BUILD", theme.ForegroundColor())
@@ -134,6 +134,7 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 	pstatus.Container = container.NewStack(container.NewVBox(
 		pstatus.ProjectTitle,
 		pstatus.Subtitle,
+		pstatus.RefreshButton,
 		widget.NewSeparator(),
 		container.NewHBox(
 			&layout.Spacer{},
@@ -142,8 +143,8 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 				repositoryTitleLabel,
 				widget.NewSeparator(),
 				pstatus.RepoOrigin,
-				pstatus.RepoBranch,
-				container.NewHBox(pstatus.RepoStatus, pstatus.FixRepoStatusLink, widget.NewSeparator(), pstatus.RepoAhead, pstatus.RepoBehind, widget.NewSeparator(), pstatus.RepoWorkingTree),
+				container.NewHBox(pstatus.RepoBranch, widget.NewSeparator(), pstatus.RepoAhead, pstatus.RepoBehind, widget.NewSeparator(), pstatus.RepoWorkingTree),
+				container.NewHBox(pstatus.RepoStatus, pstatus.FixRepoStatusLink),
 				container.NewHBox(pstatus.RepoUser, pstatus.FixUserLink),
 				container.NewHBox(pstatus.ConfigStatus, pstatus.FixConfigLink),
 				widget.NewSeparator(),

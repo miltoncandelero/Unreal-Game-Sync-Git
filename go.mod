@@ -4,6 +4,7 @@ go 1.21.4
 
 require (
 	fyne.io/fyne/v2 v2.4.1
+	fyne.io/x/fyne v0.0.0-20231020065621-89b4a4aea27d
 	github.com/go-cmd/cmd v1.4.2
 	github.com/go-git/go-git/v5 v5.10.0
 	github.com/ncruces/zenity v0.10.10

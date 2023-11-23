@@ -106,3 +106,32 @@ func ExecuteNonBlocking(workingDir, command string, args ...string) (*cmd.Cmd, <
 
 	return c, statusChan, nil
 }
+
+func OpenCmd(workingDir string) error {
+	fmt.Printf("\"opening cmd\": %v\n", "opening cmd")
+
+	cmd := os.Getenv("COMSPEC")
+	if cmd != "" {
+		// Windows here
+		powershell := "powershell.exe"
+		if _, err := exec.LookPath(powershell); err == nil {
+			c := exec.Command(cmd, "/c", "start", powershell)
+			if workingDir != "" {
+				c.Dir = workingDir
+			}
+			err := c.Run()
+			return err
+		}
+
+		c := exec.Command(cmd, "/c", "start", cmd)
+		if workingDir != "" {
+			c.Dir = workingDir
+		}
+
+		err := c.Run()
+
+		return err
+	}
+
+	return errors.New("No idea how to summon a shell in Linux or OSX.\nPlease send feedback if you do!")
+}

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"github.com/miltoncandelero/ugsg/core"
@@ -50,6 +51,9 @@ func UProjectOpened(uprojectPath string) {
 	}
 	projectStatus.ExploreButtonCallback = func() {
 		open.Start(repoPath)
+	}
+	projectStatus.TerminalButtonCallback = func() {
+		core.OpenCmd(repoPath)
 	}
 
 	projectStatus.PullButtonCallback = func() {
@@ -108,7 +112,13 @@ func UProjectOpened(uprojectPath string) {
 
 	refreshProject(projectStatus, repoPath)
 
-	appendProjectToMainWindow(projectStatus, uprojectPath)
+	commits, _ := core.GetRepoBranchInfo(repoPath, "")
+	commitList := view.MakeCommitList(commits)
+
+	mainVertical := container.NewBorder(projectStatus, nil, nil, nil, commitList)
+
+	appendProjectToMainWindow(mainVertical, uprojectPath)
+
 }
 
 func refreshProject(projectStatus *view.ProjectStatus, repoPath string) {

@@ -25,11 +25,12 @@ type LockDatum struct {
 }
 
 type CommitDatum struct {
-	Hash             string
-	Msg              string
-	User             string
-	Emoji            map[string]bool
-	DistanceFromHead int // Not fully working, now just says 1,0,-1
+	Hash          string
+	Msg           string
+	User          string
+	Date          time.Time
+	ContentChange bool
+	SourceChange  bool
 }
 
 const GIT = "git"
@@ -39,19 +40,10 @@ const ORIGIN = "origin"
 var SOURCE_REGEX = regexp.MustCompile(`.*(\\|\/)?Source((\\|\/).*)?`)
 var CONTENT_REGEX = regexp.MustCompile(`.*(\\|\/)?Content((\\|\/).*)?`)
 
-const SOURCE_EMOJI = "⚙️"
-const CONTENT_EMOJI = "📦"
-
 func GetRepoBranchInfo(repoPath string, branchName string) ([]*CommitDatum, error) {
 	start := time.Now()
 
-	headLines, err := Execute(repoPath, GIT, "rev-parse", "HEAD")
-	if err != nil {
-		return nil, err
-	}
-	headHash := headLines[0]
-
-	commitInfo := []string{"%H", "%s", "%an"}
+	commitInfo := []string{"%h", "%s", "%an", "%at"}
 
 	//	cmd := exec.Command(`git.exe`, `-P`, `log`, `-10000`, `--pretty=%H||%s||%an`)
 	logArgs := []string{"-P", "log", "--pretty=" + strings.Join(commitInfo, SEP)}
@@ -70,8 +62,6 @@ func GetRepoBranchInfo(repoPath string, branchName string) ([]*CommitDatum, erro
 
 	commits := make([]*CommitDatum, 0)
 
-	beforeHead := true
-
 	for _, commit := range logLines {
 		splitCommit := strings.Split(commit, SEP)
 
@@ -80,22 +70,16 @@ func GetRepoBranchInfo(repoPath string, branchName string) ([]*CommitDatum, erro
 		}
 
 		newCommit := &CommitDatum{
-			Hash:  splitCommit[0],
-			Msg:   splitCommit[1],
-			User:  splitCommit[2],
-			Emoji: make(map[string]bool),
+			Hash: splitCommit[0],
+			Msg:  splitCommit[1],
+			User: splitCommit[2],
 		}
 
-		if headHash == newCommit.Hash {
-			beforeHead = false
-			newCommit.DistanceFromHead = 0
-		} else {
-			if beforeHead {
-				newCommit.DistanceFromHead = 1
-			} else {
-				newCommit.DistanceFromHead = -1
-			}
+		i, err := strconv.ParseInt(splitCommit[3], 10, 64)
+		if err != nil {
+			panic(err)
 		}
+		newCommit.Date = time.Unix(i, 0)
 
 		// diffCmd := exec.Command("git.exe", "diff-tree", "--no-commit-id", "--name-only", "-r", commit[0], "--")
 		diffLines, err := Execute(repoPath, GIT, "diff-tree", "--no-commit-id", "--name-only", "-r", newCommit.Hash, "--")
@@ -105,13 +89,13 @@ func GetRepoBranchInfo(repoPath string, branchName string) ([]*CommitDatum, erro
 
 		for _, file := range diffLines {
 			if CONTENT_REGEX.MatchString(file) {
-				newCommit.Emoji[CONTENT_EMOJI] = true
+				newCommit.ContentChange = true
 			}
 			if SOURCE_REGEX.MatchString(file) {
-				newCommit.Emoji[SOURCE_EMOJI] = true
+				newCommit.SourceChange = true
 			}
-			// faster early exit
-			if len(newCommit.Emoji) == 2 {
+
+			if newCommit.ContentChange && newCommit.SourceChange {
 				break
 			}
 		}

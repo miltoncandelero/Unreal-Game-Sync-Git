@@ -2,69 +2,84 @@ package view
 
 import (
 	"fmt"
+	"image/color"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/miltoncandelero/ugsg/core"
+	"github.com/miltoncandelero/ugsg/gui/assets"
 
 	"fyne.io/x/fyne/layout"
 )
 
 type CommitList struct {
-	// extends widget
 	fyneWidget *widget.Tree
 
+	Container *fyne.Container
+
 	SelectedCommit *core.CommitDatum
+
+	datesMap map[string][]string
+	datesArr []string
+	hashMap  map[string]*core.CommitDatum
 }
 
-func MakePopupMenu(parentTree *CommitList) *widget.PopUpMenu {
+func (this *CommitList) UpdateCommits(commits []*core.CommitDatum) {
+	this.datesMap = make(map[string][]string)
+	this.datesArr = make([]string, 0)
+	this.hashMap = make(map[string]*core.CommitDatum, len(commits))
+
+	for _, commit := range commits {
+		_, ok := this.datesMap[commit.Date.Local().Format("Mon Jan _2 2006")]
+		if !ok {
+			this.datesMap[commit.Date.Local().Format("Mon Jan _2 2006")] = make([]string, 0)
+			this.datesArr = append(this.datesArr, commit.Date.Local().Format("Mon Jan _2 2006"))
+		}
+		this.datesMap[commit.Date.Local().Format("Mon Jan _2 2006")] = append(this.datesMap[commit.Date.Local().Format("Mon Jan _2 2006")], commit.Hash)
+		this.hashMap[commit.Hash] = commit
+	}
+	this.fyneWidget.OpenAllBranches()
+	this.fyneWidget.Refresh()
+}
+
+func MakePopupMenu(parentTree *CommitList, checkoutCallback func(string), resetCallback func(string), windowCanvas fyne.Canvas) *widget.PopUpMenu {
 	checkoutItem := fyne.NewMenuItem("Flashback to here (Checkout)", func() {
 		fmt.Printf("parentTree.SelectedCommit: %v\n", parentTree.SelectedCommit)
+		checkoutCallback(parentTree.SelectedCommit.Hash)
 	})
 
 	resetItem := fyne.NewMenuItem("Time travel to here (reset --hard)", func() {
 		fmt.Printf("parentTree.SelectedCommit: %v\n", parentTree.SelectedCommit)
+		resetCallback(parentTree.SelectedCommit.Hash)
 	})
 	menu := fyne.NewMenu("Time travel menu", checkoutItem, resetItem)
 
-	// TODO: Fix the ugly all windows thingy
-	popUpMenu := widget.NewPopUpMenu(menu, fyne.CurrentApp().Driver().AllWindows()[0].Canvas())
+	popUpMenu := widget.NewPopUpMenu(menu, windowCanvas)
 	return popUpMenu
 }
 
-func MakeCommitList(commits []*core.CommitDatum) fyne.CanvasObject {
-	datesMap := make(map[string][]string)
-	datesArr := make([]string, 0)
-	hashMap := make(map[string]*core.CommitDatum, len(commits))
-
-	for _, commit := range commits {
-		_, ok := datesMap[commit.Date.Local().Format("Mon Jan _2 2006")]
-		if !ok {
-			datesMap[commit.Date.Local().Format("Mon Jan _2 2006")] = make([]string, 0)
-			datesArr = append(datesArr, commit.Date.Local().Format("Mon Jan _2 2006"))
-		}
-		datesMap[commit.Date.Local().Format("Mon Jan _2 2006")] = append(datesMap[commit.Date.Local().Format("Mon Jan _2 2006")], commit.Hash)
-		hashMap[commit.Hash] = commit
-	}
-
+func MakeCommitList(checkoutCallback func(string), resetCallback func(string), windowCanvas fyne.Canvas) *CommitList {
 	tree := &CommitList{}
-	popupMenu := MakePopupMenu(tree)
+
+	popupMenu := MakePopupMenu(tree, checkoutCallback, resetCallback, windowCanvas)
 
 	tree.fyneWidget = widget.NewTree(
 		func(id widget.TreeNodeID) []widget.TreeNodeID {
 			if id == "" {
-				return datesArr
+				return tree.datesArr
 			}
 
-			return datesMap[id]
+			return tree.datesMap[id]
 		},
 		func(id widget.TreeNodeID) bool {
 			if id == "" {
 				return true
 			}
-			_, ok := datesMap[id]
+			_, ok := tree.datesMap[id]
 			return ok
 		},
 		func(branch bool) fyne.CanvasObject {
@@ -77,11 +92,11 @@ func MakeCommitList(commits []*core.CommitDatum) fyne.CanvasObject {
 			if branch {
 				o.(*widget.Label).SetText(id)
 			} else {
-				UpdateCommitWidget(hashMap[id], o)
+				UpdateCommitWidget(tree.hashMap[id], o)
 			}
 		})
-	tree.fyneWidget.OpenAllBranches()
-	return tree.fyneWidget
+	tree.Container = container.NewBorder(MakeHeaderWidget(), nil, nil, nil, tree.fyneWidget)
+	return tree
 }
 
 type CommitItem struct {
@@ -92,12 +107,22 @@ type CommitItem struct {
 
 	Commit *core.CommitDatum
 
-	Hash       *widget.Label
-	Date       *widget.Label
-	User       *widget.Label
-	Msg        *widget.Label
-	Menu       *widget.PopUpMenu
-	ParentTree *CommitList
+	Hash         *widget.Label
+	Icon         *widget.Icon
+	iconResource *theme.ThemedResource
+	Date         *widget.Label
+	User         *widget.Label
+	Msg          *widget.Label
+	Menu         *widget.PopUpMenu
+	ParentTree   *CommitList
+}
+
+func (this *CommitItem) SetIcon(icon fyne.Resource) {
+	this.ExtendBaseWidget(this)
+	this.iconResource = theme.NewThemedResource(icon)
+	this.iconResource.ColorName = theme.ColorNameForeground
+	this.Icon.Resource = this.iconResource
+	this.Container.Refresh()
 }
 
 func (citem *CommitItem) CreateRenderer() fyne.WidgetRenderer {
@@ -119,10 +144,31 @@ func (t *CommitItem) Tapped(e *fyne.PointEvent) {
 	t.ParentTree.SelectedCommit = t.Commit
 }
 
+func MakeHeaderWidget() *fyne.Container {
+	layout := layout.NewHPortion([]float64{1, 1, 1, 2, 20})
+	hbox := container.New(layout,
+		(widget.NewLabel("Hash")),
+		(widget.NewLabel("Type")),
+		(widget.NewLabel("Date")),
+		(widget.NewLabel("User")),
+		(widget.NewLabel("Msg")),
+	)
+
+	for _, o := range hbox.Objects {
+		o.(*widget.Label).Alignment = fyne.TextAlignLeading
+		o.(*widget.Label).Truncation = fyne.TextTruncateEllipsis
+	}
+
+	padding := canvas.NewRectangle(color.Transparent)
+	padding.SetMinSize(fyne.NewSize(GetChildPadding(), 0))
+	return container.NewBorder(nil, nil, padding, nil, hbox)
+}
+
 func MakeCommitWidget(menu *widget.PopUpMenu, parentTree *CommitList) fyne.CanvasObject {
-	layout := layout.NewHPortion([]float64{1, 1, 1, 10})
+	layout := layout.NewHPortion([]float64{1, 1, 1, 2, 20})
 	hbox := container.New(layout,
 		(widget.NewLabel("")),
+		(widget.NewIcon(theme.QuestionIcon())),
 		(widget.NewLabel("")),
 		(widget.NewLabel("")),
 		(widget.NewLabel("")),
@@ -131,9 +177,10 @@ func MakeCommitWidget(menu *widget.PopUpMenu, parentTree *CommitList) fyne.Canva
 	retval := &CommitItem{
 		Container:  hbox,
 		Hash:       hbox.Objects[0].(*widget.Label),
-		Date:       hbox.Objects[1].(*widget.Label),
-		User:       hbox.Objects[2].(*widget.Label),
-		Msg:        hbox.Objects[3].(*widget.Label),
+		Icon:       hbox.Objects[1].(*widget.Icon),
+		Date:       hbox.Objects[2].(*widget.Label),
+		User:       hbox.Objects[3].(*widget.Label),
+		Msg:        hbox.Objects[4].(*widget.Label),
 		Menu:       menu,
 		ParentTree: parentTree,
 	}
@@ -151,10 +198,29 @@ func MakeCommitWidget(menu *widget.PopUpMenu, parentTree *CommitList) fyne.Canva
 
 func UpdateCommitWidget(commit *core.CommitDatum, o fyne.CanvasObject) {
 	cItem := o.(*CommitItem)
-	cItem.Hash.SetText(commit.Hash)
+	cItem.Hash.SetText(commit.Hash[:6])
 	cItem.Date.SetText(commit.Date.Local().Format(time.Kitchen))
 	cItem.User.SetText(commit.User)
 	cItem.Msg.SetText(commit.Msg)
 	cItem.Commit = commit
+
+	if commit.ContentChange == commit.SourceChange {
+		if commit.ContentChange {
+			cItem.SetIcon(assets.ResMixedSvg)
+		} else {
+			cItem.SetIcon(theme.QuestionIcon())
+		}
+	} else {
+		if commit.ContentChange {
+			cItem.SetIcon(assets.ResContentSvg)
+		} else {
+			cItem.SetIcon(assets.ResCodeSvg)
+		}
+	}
+
 	o.Refresh()
+}
+
+func GetChildPadding() float32 {
+	return 2*(theme.IconInlineSize()+theme.Padding()) + theme.Padding()
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
 type LockDatum struct {
@@ -43,49 +44,30 @@ var CONTENT_REGEX = regexp.MustCompile(`.*(\\|\/)?Content((\\|\/).*)?`)
 func GetRepoBranchInfo(repoPath string, branchName string) ([]*CommitDatum, error) {
 	start := time.Now()
 
-	commitInfo := []string{"%h", "%s", "%an", "%at"}
-
-	//	cmd := exec.Command(`git.exe`, `-P`, `log`, `-10000`, `--pretty=%H||%s||%an`)
-	logArgs := []string{"-P", "log", "--pretty=" + strings.Join(commitInfo, SEP)}
-
-	if branchName != "" {
-		logArgs = append(logArgs, branchName)
-	} else {
-
-	}
-
-	logLines, err := Execute(repoPath, GIT, logArgs...)
-
+	r, err := git.PlainOpen(repoPath)
 	if err != nil {
-		return nil, err
+		log.Fatal(err)
 	}
 
-	commits := make([]*CommitDatum, 0)
+	commitsIter, _ := r.Log(&git.LogOptions{})
 
-	for _, commit := range logLines {
-		splitCommit := strings.Split(commit, SEP)
+	commitData := make([]*CommitDatum, 0)
 
-		if len(splitCommit) != len(commitInfo) {
-			continue
-		}
+	commitsIter.ForEach(func(c *object.Commit) error {
 
 		newCommit := &CommitDatum{
-			Hash: splitCommit[0],
-			Msg:  splitCommit[1],
-			User: splitCommit[2],
+			Hash: c.Hash.String(),
+			Msg:  strings.Split(c.Message, "\n")[0],
+			User: c.Author.Name,
+			Date: c.Author.When,
 		}
 
-		i, err := strconv.ParseInt(splitCommit[3], 10, 64)
-		if err != nil {
-			panic(err)
-		}
-		newCommit.Date = time.Unix(i, 0)
-
-		// diffCmd := exec.Command("git.exe", "diff-tree", "--no-commit-id", "--name-only", "-r", commit[0], "--")
-		diffLines, err := Execute(repoPath, GIT, "diff-tree", "--no-commit-id", "--name-only", "-r", newCommit.Hash, "--")
-		if err != nil {
-			return nil, err
-		}
+		// git command faster than go-git
+		// show vs diff-tree? Show works with initial commit. Diff-tree does not.
+		// git --no-pager show <sha> --name-only --format=""
+		// git --no-pager diff-tree --no-commit-id --name-only -r <sha> --
+		diffLines, _ := Execute(repoPath, GIT, "show", newCommit.Hash, "--name-only", "--format=")
+		// diffLines, _ := Execute(repoPath, GIT, "diff-tree", "--no-commit-id", "--name-only", "-r", newCommit.Hash, "--")
 
 		for _, file := range diffLines {
 			if CONTENT_REGEX.MatchString(file) {
@@ -99,14 +81,15 @@ func GetRepoBranchInfo(repoPath string, branchName string) ([]*CommitDatum, erro
 				break
 			}
 		}
+		commitData = append(commitData, newCommit)
 
-		commits = append(commits, newCommit)
-	}
+		return nil
+	})
 
 	elapsed := time.Since(start)
 	log.Printf("Git took %s", elapsed)
 
-	return commits, nil
+	return commitData, nil
 
 }
 
@@ -465,5 +448,15 @@ func IsMergeCommit(repoPath string, hash string) bool {
 
 func ReturnToLastBranch(repoPath string) error {
 	_, err := ExecuteOneLine(repoPath, GIT, "switch", "-")
+	return err
+}
+
+func Checkout(repoPath string, hash string) error {
+	_, err := ExecuteOneLine(repoPath, GIT, "checkout", hash)
+	return err
+}
+
+func ResetHard(repoPath string, hash string) error {
+	_, err := ExecuteOneLine(repoPath, GIT, "reset", "--hard", hash)
 	return err
 }

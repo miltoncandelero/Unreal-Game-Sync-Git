@@ -25,7 +25,7 @@ var mainAppRef *MainApp
 func GetApp() *MainApp {
 	if mainAppRef == nil {
 		myApp := app.NewWithID("com.killabunnies.ugsg")
-		myWindow := myApp.NewWindow("List Data")
+		myWindow := myApp.NewWindow("Unreal Game Sync: Git")
 		myWindow.Resize(fyne.NewSize(900, 600))
 
 		mainAppRef = &MainApp{

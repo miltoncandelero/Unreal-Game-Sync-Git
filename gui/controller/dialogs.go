@@ -25,6 +25,10 @@ func ShowErrorDialog(err error) {
 	dialog.ShowError(err, GetApp().Window)
 }
 
+func ShowWarningDialog(title string, body string) {
+	dialog.ShowInformation(title, body, GetApp().Window)
+}
+
 func ShowLoadingDialog(title string) *dialog.CustomDialog {
 	bar := widget.NewProgressBarInfinite()
 	rect := canvas.NewRectangle(color.Transparent)

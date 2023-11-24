@@ -17,6 +17,12 @@ import (
 	"github.com/skratchdot/open-golang/open"
 )
 
+type ProjectController struct {
+	ProjectStatus *view.ProjectStatus
+	CommitList    *view.CommitList
+	RepoPath      string
+}
+
 func UProjectOpened(uprojectPath string) {
 	d := ShowLoadingDialog("Opening...")
 	defer d.Hide()
@@ -40,303 +46,386 @@ func UProjectOpened(uprojectPath string) {
 	config.RecentProjects = append([]string{uprojectPath}, config.RecentProjects...)
 	SaveConfig()
 
-	projectStatus := view.MakeProjectStatus(uprojectPath)
+	project := &ProjectController{RepoPath: repoPath}
+
+	project.ProjectStatus = view.MakeProjectStatus(uprojectPath)
 	// stuff that won't change goes here
-	projectStatus.ProjectTitle.Text = strings.ReplaceAll(filepath.Base(uprojectPath), ".uproject", "")
-	projectStatus.Subtitle.Text = uprojectPath
-	projectStatus.RefreshButtonCallback = func() {
-		d := ShowLoadingDialog("Refreshing...")
-		defer d.Hide()
-		refreshProject(projectStatus, repoPath)
-	}
-	projectStatus.ExploreButtonCallback = func() {
-		open.Start(repoPath)
-	}
-	projectStatus.TerminalButtonCallback = func() {
-		core.OpenCmd(repoPath)
-	}
+	project.ProjectStatus.ProjectTitle.Text = strings.ReplaceAll(filepath.Base(uprojectPath), ".uproject", "")
+	project.ProjectStatus.Subtitle.Text = uprojectPath
+	project.ProjectStatus.RefreshButtonCallback = project.refreshProject
+	project.ProjectStatus.ExploreButtonCallback = project.openInExplorer
+	project.ProjectStatus.TerminalButtonCallback = project.openInTerminal
+	project.ProjectStatus.PullButtonCallback = project.pull
+	project.ProjectStatus.SyncButtonCallback = project.sync
 
-	projectStatus.PullButtonCallback = func() {
-		d := ShowLoadingDialog("Pulling...")
-		defer d.Hide()
-		defer refreshProject(projectStatus, repoPath)
-		if core.GetGitStatus(repoPath) != core.GIT_STATUS_OK {
-			ShowErrorDialog(fmt.Errorf("Repo not ok. Can't pull"))
-			return
-		}
-		err := core.GitSmartPull(repoPath)
-		if err != nil {
-			ShowErrorDialog(err)
-		}
-	}
-	projectStatus.SyncButtonCallback = func() {
-		d := ShowLoadingDialog("Syncing...")
-		defer d.Hide()
-		defer refreshProject(projectStatus, repoPath)
-		if core.GetGitStatus(repoPath) != core.GIT_STATUS_OK {
-			ShowErrorDialog(fmt.Errorf("Repo not ok. Can't sync"))
-			return
-		}
-		err := core.GitSmartPull(repoPath)
-		if err != nil {
-			ShowErrorDialog(err)
-			return
-		}
-		err = core.GitPush(repoPath)
-		if err != nil {
-			ShowErrorDialog(err)
-			return
-		}
-	}
+	project.ProjectStatus.CommitButtonCallback = project.commit
 
-	projectStatus.CommitButtonCallback = func() {
-		defer refreshProject(projectStatus, repoPath)
-		if core.GetGitStatus(repoPath) != core.GIT_STATUS_OK {
-			ShowErrorDialog(fmt.Errorf("Repo not ok. Can't commit"))
-			return
-		}
-		dialog.ShowInformation("Not implemented", "Not implemented yet :P", GetApp().Window)
-	}
-
-	projectStatus.RepoOrigin.SetText(core.GetRepoOrigin(repoPath))
+	project.ProjectStatus.RepoOrigin.SetText(core.GetRepoOrigin(repoPath))
 	switch core.GetGitProviderName(repoPath) {
 	case "GitHub":
-		projectStatus.RepoOrigin.SetIcon(assets.ResGithubSvg)
+		project.ProjectStatus.RepoOrigin.SetIcon(assets.ResGithubSvg)
 	case "GitLab":
-		projectStatus.RepoOrigin.SetIcon(assets.ResGitlabSvg)
+		project.ProjectStatus.RepoOrigin.SetIcon(assets.ResGitlabSvg)
 	case "Gitea":
-		projectStatus.RepoOrigin.SetIcon(assets.ResGiteaSvg)
+		project.ProjectStatus.RepoOrigin.SetIcon(assets.ResGiteaSvg)
 	default:
-		projectStatus.RepoOrigin.SetIcon(assets.ResGitSvg)
+		project.ProjectStatus.RepoOrigin.SetIcon(assets.ResGitSvg)
 	}
 
-	refreshProject(projectStatus, repoPath)
+	project.CommitList = view.MakeCommitList(
+		project.checkoutCallback,
+		project.resetCallback,
+		GetApp().Window.Canvas(),
+	)
 
-	commits, _ := core.GetRepoBranchInfo(repoPath, "")
-	commitList := view.MakeCommitList(commits)
+	project.refreshProject()
 
-	mainVertical := container.NewBorder(projectStatus, nil, nil, nil, commitList)
+	mainVertical := container.NewBorder(project.ProjectStatus, nil, nil, nil, project.CommitList.Container)
 
 	appendProjectToMainWindow(mainVertical, uprojectPath)
 
 }
 
-func refreshProject(projectStatus *view.ProjectStatus, repoPath string) {
-	refreshRepo(projectStatus, repoPath)
+func (project *ProjectController) checkoutCallback(hash string) {
+	defer project.refreshProject()
+
+	if core.GetWorkingTreeChangeAmount(project.RepoPath) > 0 {
+		ShowWarningDialog("I'm afraid I can't do that", "You have uncommited changes.\nPlease commit (or discard) them before trying to flashback")
+		return
+	}
+
+	d := ShowLoadingDialog("Flashing back...")
+
+	err := core.Checkout(project.RepoPath, hash)
+	if err != nil {
+		d.Hide()
+		ShowErrorDialog(err)
+		return
+	}
+	d.Hide()
+}
+
+func (project *ProjectController) resetCallback(hash string) {
+	defer project.refreshProject()
+
+	if core.GetWorkingTreeChangeAmount(project.RepoPath) > 0 {
+		ShowWarningDialog("I'm afraid I can't do that", "You have uncommited changes.\nPlease commit (or discard) them before trying to time travel")
+		return
+	}
+
+	ahead, _, _ := core.GetAheadBehind(project.RepoPath)
+	if ahead > 0 {
+		ShowWarningDialog("I'm afraid I can't do that", "You have commits that haven't been pushed. Please push your changes before trying to time travel")
+		return
+	}
+
+	d := ShowLoadingDialog("Time traveling...")
+	// cant defer close if I have dialogs :(
+
+	err := core.ResetHard(project.RepoPath, hash)
+	if err != nil {
+		d.Hide()
+		ShowErrorDialog(err)
+		return
+	}
+
+	d.Hide()
+}
+
+func (project *ProjectController) openInExplorer() {
+	open.Run(project.RepoPath)
+}
+
+func (project *ProjectController) openInTerminal() {
+	core.OpenCmd(project.RepoPath)
+}
+
+func (project *ProjectController) pull() {
+
+	defer project.refreshProject()
+	d := ShowLoadingDialog("Pulling...")
+	if core.GetGitStatus(project.RepoPath) != core.GIT_STATUS_OK {
+		d.Hide()
+		ShowErrorDialog(fmt.Errorf("Repo not ok. Can't pull"))
+		return
+	}
+	err := core.GitSmartPull(project.RepoPath)
+	if err != nil {
+		d.Hide()
+		ShowErrorDialog(err)
+		return
+	}
+
+	d.Hide()
+}
+
+func (project *ProjectController) sync() {
+	defer project.refreshProject()
+	d := ShowLoadingDialog("Syncing...")
+	if core.GetGitStatus(project.RepoPath) != core.GIT_STATUS_OK {
+		d.Hide()
+		ShowErrorDialog(fmt.Errorf("Repo not ok. Can't sync"))
+		return
+	}
+	err := core.GitSmartPull(project.RepoPath)
+	if err != nil {
+		d.Hide()
+		ShowErrorDialog(err)
+		return
+	}
+	err = core.GitPush(project.RepoPath)
+	if err != nil {
+		d.Hide()
+		ShowErrorDialog(err)
+		return
+	}
+	d.Hide()
+}
+
+func (project *ProjectController) commit() {
+
+	defer project.refreshProject()
+	if core.GetGitStatus(project.RepoPath) != core.GIT_STATUS_OK {
+		ShowErrorDialog(fmt.Errorf("Repo not ok. Can't commit"))
+		return
+	}
+	dialog.ShowInformation("Not implemented", "Not implemented yet :P", GetApp().Window)
+
+}
+
+func (project *ProjectController) refreshProject() {
+	d := ShowLoadingDialog("Refreshing...")
+	defer d.Hide()
+
+	project.refreshRepo()
 	// refresh build
 	// reresh other stuff?
 }
 
-func refreshRepo(projectStatus *view.ProjectStatus, repoPath string) {
-	refreshRepoStatus(projectStatus, repoPath)
-	refreshRepoUserData(projectStatus, repoPath)
-	refreshRepoConfigStatus(projectStatus, repoPath)
-	refreshRepoActions(projectStatus, repoPath)
+func (project *ProjectController) refreshRepo() {
+	project.refreshRepoStatus()
+	project.refreshRepoUserData()
+	project.refreshRepoConfigStatus()
+	project.refreshRepoActions()
+	project.refreshCommits()
 }
 
-func refreshRepoUserData(projectStatus *view.ProjectStatus, repoPath string) {
-	if core.NeedsUsernameFix(repoPath) {
-		projectStatus.RepoUser.SetText("Username missing!")
-		projectStatus.RepoUser.SetIcon(theme.ErrorIcon())
-		projectStatus.RepoUser.SetColor(theme.ColorNameError)
-		projectStatus.FixUserLink.SetText("Fix")
+func (project *ProjectController) refreshRepoUserData() {
+	if core.NeedsUsernameFix(project.RepoPath) {
+		project.ProjectStatus.RepoUser.SetText("Username missing!")
+		project.ProjectStatus.RepoUser.SetIcon(theme.ErrorIcon())
+		project.ProjectStatus.RepoUser.SetColor(theme.ColorNameError)
+		project.ProjectStatus.FixUserLink.SetText("Fix")
 	} else {
-		projectStatus.RepoUser.SetText(core.GetUsernameFromRepo(repoPath) + " (" + core.GetUserEmailFromRepo(repoPath) + ")")
-		projectStatus.RepoUser.SetIcon(theme.AccountIcon())
-		projectStatus.RepoUser.SetColor(theme.ColorNameForeground)
-		projectStatus.FixUserLink.SetText("Change")
+		project.ProjectStatus.RepoUser.SetText(core.GetUsernameFromRepo(project.RepoPath) + " (" + core.GetUserEmailFromRepo(project.RepoPath) + ")")
+		project.ProjectStatus.RepoUser.SetIcon(theme.AccountIcon())
+		project.ProjectStatus.RepoUser.SetColor(theme.ColorNameForeground)
+		project.ProjectStatus.FixUserLink.SetText("Change")
 	}
-	projectStatus.FixUserLinkCallback = func() {
-		ShowUsernameEmailDialog(core.GetGitProviderName(repoPath),
+	project.ProjectStatus.FixUserLinkCallback = func() {
+		ShowUsernameEmailDialog(core.GetGitProviderName(project.RepoPath),
 			func(username string, email string) error {
-				err := core.SetUsernameAndEmail(repoPath, username, email)
+				err := core.SetUsernameAndEmail(project.RepoPath, username, email)
 				if err != nil {
 					return err
 				}
-				refreshRepoUserData(projectStatus, repoPath)
+				project.refreshRepoUserData()
 				return nil
 			})
 	}
 }
 
-func refreshRepoConfigStatus(projectStatus *view.ProjectStatus, repoPath string) {
-	switch core.GetGitConfigStatus(repoPath) {
+func (project *ProjectController) refreshRepoConfigStatus() {
+	switch core.GetGitConfigStatus(project.RepoPath) {
 	case core.CONFIG_STATUS_MISSING:
-		projectStatus.ConfigStatus.SetText(".gitconfig missing")
-		projectStatus.ConfigStatus.SetColor(theme.ColorNameWarning)
-		projectStatus.ConfigStatus.SetIcon(theme.QuestionIcon())
-		projectStatus.FixConfigLink.SetText("Create")
-		projectStatus.FixConfigLink.Show()
-		projectStatus.FixConfigLinkCallback = func() {
-			err := core.CreateGitConfig(repoPath)
+		project.ProjectStatus.ConfigStatus.SetText(".gitconfig missing")
+		project.ProjectStatus.ConfigStatus.SetColor(theme.ColorNameWarning)
+		project.ProjectStatus.ConfigStatus.SetIcon(theme.QuestionIcon())
+		project.ProjectStatus.FixConfigLink.SetText("Create")
+		project.ProjectStatus.FixConfigLink.Show()
+		project.ProjectStatus.FixConfigLinkCallback = func() {
+			err := core.CreateGitConfig(project.RepoPath)
 			if err != nil {
 				ShowErrorDialog(err)
 			}
-			refreshRepoConfigStatus(projectStatus, repoPath)
+			project.refreshRepoConfigStatus()
 		}
 	case core.CONFIG_STATUS_NOT_LINKED:
-		projectStatus.ConfigStatus.SetText(".gitconfig found but not installed!")
-		projectStatus.ConfigStatus.SetColor(theme.ColorNameError)
-		projectStatus.ConfigStatus.SetIcon(theme.ErrorIcon())
-		projectStatus.FixConfigLink.SetText("Fix")
-		projectStatus.FixConfigLink.Show()
-		projectStatus.FixConfigLinkCallback = func() {
-			err := core.LinkGitConfig(repoPath)
+		project.ProjectStatus.ConfigStatus.SetText(".gitconfig found but not installed!")
+		project.ProjectStatus.ConfigStatus.SetColor(theme.ColorNameError)
+		project.ProjectStatus.ConfigStatus.SetIcon(theme.ErrorIcon())
+		project.ProjectStatus.FixConfigLink.SetText("Fix")
+		project.ProjectStatus.FixConfigLink.Show()
+		project.ProjectStatus.FixConfigLinkCallback = func() {
+			err := core.LinkGitConfig(project.RepoPath)
 			if err != nil {
 				ShowErrorDialog(err)
 			}
-			refreshRepoConfigStatus(projectStatus, repoPath)
+			project.refreshRepoConfigStatus()
 		}
 	case core.CONFIG_STATUS_LINKED:
-		projectStatus.ConfigStatus.SetText(".gitconfig linked")
-		projectStatus.ConfigStatus.SetColor(theme.ColorNameSuccess)
-		projectStatus.ConfigStatus.SetIcon(theme.ConfirmIcon())
-		projectStatus.FixConfigLink.Hide()
+		project.ProjectStatus.ConfigStatus.SetText(".gitconfig linked")
+		project.ProjectStatus.ConfigStatus.SetColor(theme.ColorNameSuccess)
+		project.ProjectStatus.ConfigStatus.SetIcon(theme.ConfirmIcon())
+		project.ProjectStatus.FixConfigLink.Hide()
 	}
 }
 
-func refreshRepoStatus(projectStatus *view.ProjectStatus, repoPath string) {
-	status := core.GetGitStatus(repoPath)
+func (project *ProjectController) refreshRepoStatus() {
+	status := core.GetGitStatus(project.RepoPath)
 	switch status {
 	case core.GIT_STATUS_OK:
-		projectStatus.RepoStatus.SetText("Repo ok")
-		projectStatus.RepoStatus.SetColor(theme.ColorNameSuccess)
-		projectStatus.RepoStatus.SetIcon(theme.ConfirmIcon())
-		projectStatus.FixRepoStatusLink.Hide()
+		project.ProjectStatus.RepoStatus.SetText("Repo ok")
+		project.ProjectStatus.RepoStatus.SetColor(theme.ColorNameSuccess)
+		project.ProjectStatus.RepoStatus.SetIcon(theme.ConfirmIcon())
+		project.ProjectStatus.FixRepoStatusLink.Hide()
 	case core.GIT_STATUS_SHALLOW:
-		projectStatus.RepoStatus.SetText("Repo is shallow!")
-		projectStatus.RepoStatus.SetColor(theme.ColorNameWarning)
-		projectStatus.RepoStatus.SetIcon(theme.WarningIcon())
-		projectStatus.FixRepoStatusLink.SetText("unshallow")
-		projectStatus.FixRepoStatusLink.Show()
-		projectStatus.FixRepoStatusCallback = func() {
+		project.ProjectStatus.RepoStatus.SetText("Repo is shallow!")
+		project.ProjectStatus.RepoStatus.SetColor(theme.ColorNameWarning)
+		project.ProjectStatus.RepoStatus.SetIcon(theme.WarningIcon())
+		project.ProjectStatus.FixRepoStatusLink.SetText("unshallow")
+		project.ProjectStatus.FixRepoStatusLink.Show()
+		project.ProjectStatus.FixRepoStatusCallback = func() {
+			defer project.refreshRepo()
 			d := ShowLoadingDialog("Unshallowing (This will take a while)...")
-			defer d.Hide()
-			err := core.UnshallowRepo(repoPath)
+			err := core.UnshallowRepo(project.RepoPath)
 			if err != nil {
+				d.Hide()
 				ShowErrorDialog(err)
+				return
 			}
-			refreshRepo(projectStatus, repoPath)
+			d.Hide()
 		}
 	case core.GIT_STATUS_REBASE_CONTINUABLE:
-		projectStatus.RepoStatus.SetText("Rebase underway, ready to continue")
-		projectStatus.RepoStatus.SetColor(theme.ColorNameForeground)
-		projectStatus.RepoStatus.SetIcon(theme.WarningIcon())
-		projectStatus.FixRepoStatusLink.SetText("continue")
-		projectStatus.FixRepoStatusLink.Show()
-		projectStatus.FixRepoStatusCallback = func() {
+		project.ProjectStatus.RepoStatus.SetText("Rebase underway, ready to continue")
+		project.ProjectStatus.RepoStatus.SetColor(theme.ColorNameForeground)
+		project.ProjectStatus.RepoStatus.SetIcon(theme.WarningIcon())
+		project.ProjectStatus.FixRepoStatusLink.SetText("continue")
+		project.ProjectStatus.FixRepoStatusLink.Show()
+		project.ProjectStatus.FixRepoStatusCallback = func() {
+			defer project.refreshRepo()
 			d := ShowLoadingDialog("Rebasing...")
-			defer d.Hide()
-			err := core.FinishRebase(repoPath)
+			err := core.FinishRebase(project.RepoPath)
 			if err != nil {
+				d.Hide()
 				ShowErrorDialog(err)
+				return
 			}
-			refreshRepo(projectStatus, repoPath)
+			d.Hide()
 		}
 	case core.GIT_STATUS_REBASE_CONFLICTS:
-		projectStatus.RepoStatus.SetText("Rebase underway, conflicts detected!")
-		projectStatus.RepoStatus.SetColor(theme.ColorNameError)
-		projectStatus.RepoStatus.SetIcon(theme.ErrorIcon())
-		projectStatus.FixRepoStatusLink.SetText("continue")
-		projectStatus.FixRepoStatusLink.Show()
-		projectStatus.FixRepoStatusCallback = func() {
+		project.ProjectStatus.RepoStatus.SetText("Rebase underway, conflicts detected!")
+		project.ProjectStatus.RepoStatus.SetColor(theme.ColorNameError)
+		project.ProjectStatus.RepoStatus.SetIcon(theme.ErrorIcon())
+		project.ProjectStatus.FixRepoStatusLink.SetText("continue")
+		project.ProjectStatus.FixRepoStatusLink.Show()
+		project.ProjectStatus.FixRepoStatusCallback = func() {
+			defer project.refreshRepo()
 			d := ShowLoadingDialog("Rebasing...")
-			defer d.Hide()
-			err := core.FinishRebase(repoPath)
+			err := core.FinishRebase(project.RepoPath)
 			if err != nil {
+				d.Hide()
 				ShowErrorDialog(err)
+				return
 			}
-			refreshRepo(projectStatus, repoPath)
+			d.Hide()
 		}
 	case core.GIT_STATUS_LAST_COMMIT_MERGE:
-		projectStatus.RepoStatus.SetText("Merge commit detected! This shouldn't have happened!")
-		projectStatus.RepoStatus.SetColor(theme.ColorNameWarning)
-		projectStatus.RepoStatus.SetIcon(theme.WarningIcon())
-		projectStatus.FixRepoStatusLink.Hide()
+		project.ProjectStatus.RepoStatus.SetText("Merge commit detected! This shouldn't have happened!")
+		project.ProjectStatus.RepoStatus.SetColor(theme.ColorNameWarning)
+		project.ProjectStatus.RepoStatus.SetIcon(theme.WarningIcon())
+		project.ProjectStatus.FixRepoStatusLink.Hide()
 	case core.GIT_STATUS_DEATACHED_HEAD:
-		projectStatus.RepoStatus.SetText("Currently in a Flashback (Deatached HEAD)")
-		projectStatus.RepoStatus.SetColor(theme.ColorNameWarning)
-		projectStatus.RepoStatus.SetIcon(theme.WarningIcon())
-		projectStatus.FixRepoStatusLink.SetText("end Flashback")
-		projectStatus.FixRepoStatusCallback = func() {
+		project.ProjectStatus.RepoStatus.SetText("Currently in a Flashback (Deatached HEAD)")
+		project.ProjectStatus.RepoStatus.SetColor(theme.ColorNameWarning)
+		project.ProjectStatus.RepoStatus.SetIcon(theme.WarningIcon())
+		project.ProjectStatus.FixRepoStatusLink.SetText("end Flashback")
+		project.ProjectStatus.FixRepoStatusCallback = func() {
+			defer project.refreshRepo()
 			d := ShowLoadingDialog("Returning...")
-			defer d.Hide()
-			err := core.ReturnToLastBranch(repoPath)
+			err := core.ReturnToLastBranch(project.RepoPath)
 			if err != nil {
+				d.Hide()
 				ShowErrorDialog(err)
+				return
 			}
-			refreshRepo(projectStatus, repoPath)
+			d.Hide()
 		}
-		projectStatus.FixRepoStatusLink.Show()
+		project.ProjectStatus.FixRepoStatusLink.Show()
 	}
 
-	if core.IsDeatachedHead(repoPath) {
-		projectStatus.RepoBranch.SetText("in a Flashback")
-		projectStatus.RepoBranch.SetIcon(theme.WarningIcon())
-		projectStatus.RepoAhead.Hide()
-		projectStatus.RepoBehind.Hide()
-		projectStatus.RepoWorkingTree.Hide()
+	if core.IsDeatachedHead(project.RepoPath) {
+		project.ProjectStatus.RepoBranch.SetText("in a Flashback")
+		project.ProjectStatus.RepoBranch.SetIcon(theme.WarningIcon())
+		project.ProjectStatus.RepoAhead.Hide()
+		project.ProjectStatus.RepoBehind.Hide()
+		project.ProjectStatus.RepoWorkingTree.Hide()
 	} else {
 
-		ahead, behind, _ := core.GetAheadBehind(repoPath)
-		projectStatus.RepoAhead.SetText(strconv.Itoa(ahead))
-		projectStatus.RepoBehind.SetText(strconv.Itoa(behind))
-		projectStatus.RepoAhead.Show()
-		projectStatus.RepoBehind.Show()
+		ahead, behind, _ := core.GetAheadBehind(project.RepoPath)
+		project.ProjectStatus.RepoAhead.SetText(strconv.Itoa(ahead))
+		project.ProjectStatus.RepoBehind.SetText(strconv.Itoa(behind))
+		project.ProjectStatus.RepoAhead.Show()
+		project.ProjectStatus.RepoBehind.Show()
 
-		changes := core.GetWorkingTreeChangeAmount(repoPath)
+		changes := core.GetWorkingTreeChangeAmount(project.RepoPath)
 		if changes == 0 {
-			projectStatus.RepoWorkingTree.Hide()
+			project.ProjectStatus.RepoWorkingTree.Hide()
 		} else {
-			projectStatus.RepoWorkingTree.Show()
-			projectStatus.RepoWorkingTree.SetText(strconv.Itoa(changes))
+			project.ProjectStatus.RepoWorkingTree.Show()
+			project.ProjectStatus.RepoWorkingTree.SetText(strconv.Itoa(changes))
 		}
 
-		branch, _ := core.GetCurrentBranchFromRepository(repoPath)
+		branch, _ := core.GetCurrentBranchFromRepository(project.RepoPath)
 
-		projectStatus.RepoBranch.SetText(branch)
-		projectStatus.RepoBranch.SetIcon(assets.ResBranchSvg)
+		project.ProjectStatus.RepoBranch.SetText(branch)
+		project.ProjectStatus.RepoBranch.SetIcon(assets.ResBranchSvg)
 	}
 
 }
 
-func refreshRepoActions(projectStatus *view.ProjectStatus, repoPath string) {
-	if core.GetGitStatus(repoPath) != core.GIT_STATUS_OK {
-		projectStatus.PullButton.Disable()
-		projectStatus.SyncButton.Disable()
-		projectStatus.CommitButton.Disable()
+func (project *ProjectController) refreshRepoActions() {
+	if core.GetGitStatus(project.RepoPath) != core.GIT_STATUS_OK {
+		project.ProjectStatus.PullButton.Disable()
+		project.ProjectStatus.SyncButton.Disable()
+		project.ProjectStatus.CommitButton.Disable()
 
-		projectStatus.PullButton.SetText("Repo not ok. Can't pull")
-		projectStatus.SyncButton.SetText("Repo not ok. Can't sync")
-		projectStatus.CommitButton.SetText("Repo not ok. Can't commit")
+		project.ProjectStatus.PullButton.SetText("Repo not ok. Can't pull")
+		project.ProjectStatus.SyncButton.SetText("Repo not ok. Can't sync")
+		project.ProjectStatus.CommitButton.SetText("Repo not ok. Can't commit")
 		return
 	}
 
-	if core.GetWorkingTreeChangeAmount(repoPath) > 0 {
-		projectStatus.CommitButton.SetText("Commit")
-		projectStatus.CommitButton.Enable()
+	if core.GetWorkingTreeChangeAmount(project.RepoPath) > 0 {
+		project.ProjectStatus.CommitButton.SetText("Commit")
+		project.ProjectStatus.CommitButton.Enable()
 	} else {
-		projectStatus.CommitButton.SetText("Nothing to commit")
-		projectStatus.CommitButton.Disable()
+		project.ProjectStatus.CommitButton.SetText("Nothing to commit")
+		project.ProjectStatus.CommitButton.Disable()
 	}
 
-	ahead, behind, _ := core.GetAheadBehind(repoPath)
+	ahead, behind, _ := core.GetAheadBehind(project.RepoPath)
 	if behind > 0 {
-		projectStatus.PullButton.SetText("Pull")
-		projectStatus.PullButton.Enable()
+		project.ProjectStatus.PullButton.SetText("Pull")
+		project.ProjectStatus.PullButton.Enable()
 	} else {
-		projectStatus.PullButton.SetText("Nothing to pull")
-		projectStatus.PullButton.Disable()
+		project.ProjectStatus.PullButton.SetText("Nothing to pull")
+		project.ProjectStatus.PullButton.Disable()
 	}
 
 	if behind > 0 || ahead > 0 {
-		projectStatus.SyncButton.SetText("Sync")
-		projectStatus.SyncButton.Enable()
+		project.ProjectStatus.SyncButton.SetText("Sync")
+		project.ProjectStatus.SyncButton.Enable()
 	} else {
-		projectStatus.SyncButton.SetText("Nothing to sync")
-		projectStatus.SyncButton.Disable()
+		project.ProjectStatus.SyncButton.SetText("Nothing to sync")
+		project.ProjectStatus.SyncButton.Disable()
 	}
 
+}
+
+func (project *ProjectController) refreshCommits() {
+	commits, _ := core.GetRepoBranchInfo(project.RepoPath, "")
+	project.CommitList.UpdateCommits(commits)
 }
 
 func openFilePickerUproject() {

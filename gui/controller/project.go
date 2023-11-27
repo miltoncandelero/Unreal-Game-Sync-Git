@@ -229,7 +229,7 @@ func (project *ProjectController) refreshRepoUserData() {
 				if err != nil {
 					return err
 				}
-				project.refreshRepoUserData()
+				project.refreshRepo()
 				return nil
 			})
 	}
@@ -360,6 +360,7 @@ func (project *ProjectController) refreshRepoStatus() {
 		project.ProjectStatus.RepoAhead.Hide()
 		project.ProjectStatus.RepoBehind.Hide()
 		project.ProjectStatus.RepoWorkingTree.Hide()
+		project.ProjectStatus.RepoLockedFiles.Hide()
 	} else {
 
 		ahead, behind, _ := core.GetAheadBehind(project.RepoPath)
@@ -380,8 +381,15 @@ func (project *ProjectController) refreshRepoStatus() {
 
 		project.ProjectStatus.RepoBranch.SetText(branch)
 		project.ProjectStatus.RepoBranch.SetIcon(assets.ResBranchSvg)
-	}
 
+		lockedFiles, _ := core.GetLockedFiles(project.RepoPath, core.GetUsernameFromRepo(project.RepoPath))
+		if len(lockedFiles) == 0 {
+			project.ProjectStatus.RepoLockedFiles.Hide()
+		} else {
+			project.ProjectStatus.RepoLockedFiles.Show()
+			project.ProjectStatus.RepoLockedFiles.SetText(strconv.Itoa(len(lockedFiles)))
+		}
+	}
 }
 
 func (project *ProjectController) refreshRepoActions() {

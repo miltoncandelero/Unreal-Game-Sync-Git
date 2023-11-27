@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"os"
@@ -15,15 +14,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
-
-type LockDatum struct {
-	ID    string `json:"id"`
-	Path  string `json:"path"`
-	Owner struct {
-		Name string `json:"name"`
-	} `json:"owner"`
-	LockedAt time.Time `json:"locked_at"`
-}
 
 type CommitDatum struct {
 	Hash          string
@@ -259,11 +249,6 @@ func FinishRebase(repoPath string) error {
 	}
 }
 
-func PruneLFS(repoPath string) error {
-	_, err := ExecuteOneLine(repoPath, GIT, "lfs", "prune", "-fc")
-	return err
-}
-
 func IsShallowRepo(repoPath string) bool {
 	isShallow, _ := ExecuteOneLine(repoPath, GIT, "rev-parse", "--is-shallow-repository")
 	if strings.Contains(isShallow, "true") {
@@ -278,6 +263,59 @@ func UnshallowRepo(repoPath string) error {
 		return err
 	}
 	return nil
+}
+
+func GetWorkingTreeFiles(repoPath string, excludeUntracked bool) ([]string, error) {
+	var params []string
+	if excludeUntracked {
+		params = []string{"status", "--porcelain", "--untracked-files=no"}
+	} else {
+		params = []string{"status", "--porcelain"}
+	}
+	lines, err := Execute(repoPath, GIT, params...)
+	if err != nil {
+		return nil, err
+	}
+
+	dedupMap := make(map[string]bool)
+	retval := make([]string, 0)
+	for _, line := range lines {
+		if line != "" {
+			filename := strings.TrimSpace(line[3:])
+			if filename != "" {
+				if strings.Contains(filename, "->") {
+					// This is a rename, we need to add both files
+					split := strings.Split(filename, "->")
+
+					file1 := strings.TrimSpace(split[0])
+					if file1 != "" {
+						_, exists := dedupMap[file1]
+						if !exists {
+							dedupMap[file1] = true
+							retval = append(retval, file1)
+						}
+					}
+
+					file2 := strings.TrimSpace(split[1])
+					if file2 != "" {
+						_, exists := dedupMap[file2]
+						if !exists {
+							dedupMap[file2] = true
+							retval = append(retval, file2)
+						}
+					}
+				} else {
+					_, exists := dedupMap[filename]
+					if !exists {
+						dedupMap[filename] = true
+						retval = append(retval, filename)
+					}
+				}
+			}
+		}
+	}
+
+	return retval, nil
 }
 
 func GetWorkingTreeChangeAmount(repoPath string) int {
@@ -349,25 +387,6 @@ func GitPush(repoPath string) error {
 
 	_, err = ExecuteOneLine(repoPath, GIT, "push")
 	return err
-}
-
-func GetLockedFiles(repoPath string, fromUser string) ([]LockDatum, error) {
-	jsonLocks, _ := ExecuteOneLine(repoPath, GIT, "lfs", "locks", "--json")
-	locks := make([]LockDatum, 0)
-	err := json.Unmarshal([]byte(jsonLocks), &locks)
-	if err != nil {
-		return nil, err
-	}
-	if fromUser == "" {
-		return locks, nil
-	}
-	filteredLocks := make([]LockDatum, 0)
-	for _, lock := range locks {
-		if lock.Owner.Name == fromUser {
-			filteredLocks = append(filteredLocks, lock)
-		}
-	}
-	return filteredLocks, nil
 }
 
 func IsPathRepo(repoPath string) bool {

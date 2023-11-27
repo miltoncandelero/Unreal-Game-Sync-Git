@@ -48,7 +48,8 @@ func Execute(workingDir, command string, args ...string) ([]string, error) {
 
 	lines := strings.Split(outStr, "\n")
 	for idx, line := range lines {
-		lines[idx] = strings.TrimSpace(line)
+		// lines[idx] = strings.TrimSpace(line)
+		lines[idx] = line
 	}
 
 	return lines, nil

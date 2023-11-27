@@ -40,6 +40,7 @@ type ProjectStatus struct {
 	RepoAhead             *IconText
 	RepoBehind            *IconText
 	RepoWorkingTree       *IconText
+	RepoLockedFiles       *IconText
 	RepoBranch            *IconText
 	ConfigStatus          *IconText
 	FixConfigLink         *widget.Hyperlink
@@ -107,6 +108,8 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 	pstatus.RepoBehind.SetColor(theme.ColorNameError)
 	pstatus.RepoWorkingTree = MakeIconText("13", theme.DocumentSaveIcon())
 	pstatus.RepoWorkingTree.SetColor(theme.ColorNameWarning)
+	pstatus.RepoLockedFiles = MakeIconText("12", assets.ResLockSvg)
+	pstatus.RepoLockedFiles.SetColor(theme.ColorNameWarning)
 	pstatus.RepoBranch = MakeIconText("Branch", assets.ResBranchSvg)
 	pstatus.ConfigStatus = MakeIconText("Config", theme.QuestionIcon())
 	pstatus.FixConfigLink = widget.NewHyperlink("Fix Config", nil)
@@ -149,7 +152,7 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 				repositoryTitleLabel,
 				widget.NewSeparator(),
 				pstatus.RepoOrigin,
-				container.NewHBox(pstatus.RepoBranch, widget.NewSeparator(), pstatus.RepoAhead, pstatus.RepoBehind, widget.NewSeparator(), pstatus.RepoWorkingTree),
+				container.NewHBox(pstatus.RepoBranch, widget.NewSeparator(), pstatus.RepoAhead, pstatus.RepoBehind, widget.NewSeparator(), pstatus.RepoWorkingTree, widget.NewSeparator(), pstatus.RepoLockedFiles),
 				container.NewHBox(pstatus.RepoStatus, pstatus.FixRepoStatusLink),
 				container.NewHBox(pstatus.RepoUser, pstatus.FixUserLink),
 				container.NewHBox(pstatus.ConfigStatus, pstatus.FixConfigLink),

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -20,6 +21,7 @@ import (
 type ProjectController struct {
 	ProjectStatus *view.ProjectStatus
 	CommitList    *view.CommitList
+	LockDialog    *view.LockedDialog
 	RepoPath      string
 }
 
@@ -58,7 +60,7 @@ func UProjectOpened(uprojectPath string) {
 	project.ProjectStatus.PullButtonCallback = project.pull
 	project.ProjectStatus.SyncButtonCallback = project.sync
 
-	project.ProjectStatus.CommitButtonCallback = project.commit
+	project.ProjectStatus.LockButtonCallback = project.manageLocks
 
 	project.ProjectStatus.RepoOrigin.SetText(core.GetRepoOrigin(repoPath))
 	switch core.GetGitProviderName(repoPath) {
@@ -77,6 +79,25 @@ func UProjectOpened(uprojectPath string) {
 		project.resetCallback,
 		GetApp().Window.Canvas(),
 	)
+
+	project.LockDialog = view.MakeLockedDialog(GetApp().Window)
+	project.LockDialog.UnlockFilesCalback = func(lockedFiles []core.LockDatum, force bool) {
+		d := ShowLoadingDialog("Unlocking...")
+		err := core.UnlockLFSFiles(project.RepoPath, lockedFiles, force)
+		d.Hide()
+		d = ShowLoadingDialog("Refreshing...")
+		project.refreshRepoStatus()
+		d.Hide()
+		if err != nil {
+			ShowErrorDialog(errors.New("Error unlocking. " + strconv.Itoa(len(err)) + " files couldn't be unlocked. Try with force?"))
+		}
+	}
+
+	project.LockDialog.RefreshCallback = func() {
+		d := ShowLoadingDialog("Refreshing...")
+		project.refreshRepoStatus()
+		d.Hide()
+	}
 
 	project.refreshProject()
 
@@ -182,15 +203,15 @@ func (project *ProjectController) sync() {
 	d.Hide()
 }
 
-func (project *ProjectController) commit() {
+func (project *ProjectController) manageLocks() {
 
-	defer project.refreshProject()
-	if core.GetGitStatus(project.RepoPath) != core.GIT_STATUS_OK {
-		ShowErrorDialog(fmt.Errorf("Repo not ok. Can't commit"))
-		return
-	}
-	dialog.ShowInformation("Not implemented", "Not implemented yet :P", GetApp().Window)
-
+	// defer project.refreshProject()
+	// if core.GetGitStatus(project.RepoPath) != core.GIT_STATUS_OK {
+	// 	ShowErrorDialog(fmt.Errorf("Repo not ok. Can't commit"))
+	// 	return
+	// }
+	//dialog.ShowInformation("Not implemented", "Not implemented yet :P", GetApp().Window)
+	project.LockDialog.Show()
 }
 
 func (project *ProjectController) refreshProject() {
@@ -385,9 +406,14 @@ func (project *ProjectController) refreshRepoStatus() {
 		lockedFiles, _ := core.GetLockedFiles(project.RepoPath, core.GetUsernameFromRepo(project.RepoPath))
 		if len(lockedFiles) == 0 {
 			project.ProjectStatus.RepoLockedFiles.Hide()
+			project.LockDialog.UpdateData(lockedFiles, lockedFiles)
+			project.ProjectStatus.LockButton.Hide()
 		} else {
 			project.ProjectStatus.RepoLockedFiles.Show()
 			project.ProjectStatus.RepoLockedFiles.SetText(strconv.Itoa(len(lockedFiles)))
+			unchangedLocked, _ := core.ListLFSLockedUnchangedFiles(project.RepoPath)
+			project.LockDialog.UpdateData(lockedFiles, unchangedLocked)
+			project.ProjectStatus.LockButton.Show()
 		}
 	}
 }
@@ -396,21 +422,21 @@ func (project *ProjectController) refreshRepoActions() {
 	if core.GetGitStatus(project.RepoPath) != core.GIT_STATUS_OK {
 		project.ProjectStatus.PullButton.Disable()
 		project.ProjectStatus.SyncButton.Disable()
-		project.ProjectStatus.CommitButton.Disable()
+		// project.ProjectStatus.CommitButton.Disable()
 
 		project.ProjectStatus.PullButton.SetText("Repo not ok. Can't pull")
 		project.ProjectStatus.SyncButton.SetText("Repo not ok. Can't sync")
-		project.ProjectStatus.CommitButton.SetText("Repo not ok. Can't commit")
+		// project.ProjectStatus.CommitButton.SetText("Repo not ok. Can't commit")
 		return
 	}
 
-	if core.GetWorkingTreeChangeAmount(project.RepoPath) > 0 {
-		project.ProjectStatus.CommitButton.SetText("Commit")
-		project.ProjectStatus.CommitButton.Enable()
-	} else {
-		project.ProjectStatus.CommitButton.SetText("Nothing to commit")
-		project.ProjectStatus.CommitButton.Disable()
-	}
+	// if core.GetWorkingTreeChangeAmount(project.RepoPath) > 0 {
+	// 	project.ProjectStatus.CommitButton.SetText("Commit")
+	// 	project.ProjectStatus.CommitButton.Enable()
+	// } else {
+	// 	project.ProjectStatus.CommitButton.SetText("Nothing to commit")
+	// 	project.ProjectStatus.CommitButton.Disable()
+	// }
 
 	ahead, behind, _ := core.GetAheadBehind(project.RepoPath)
 	if behind > 0 {

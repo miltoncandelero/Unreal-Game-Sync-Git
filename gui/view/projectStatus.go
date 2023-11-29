@@ -49,8 +49,8 @@ type ProjectStatus struct {
 	PullButtonCallback    func()
 	SyncButton            *widget.Button
 	SyncButtonCallback    func()
-	CommitButton          *widget.Button
-	CommitButtonCallback  func()
+	LockButton            *widget.Button
+	LockButtonCallback    func()
 
 	// Build manager buttons
 	BuildStatus                 *IconText
@@ -117,7 +117,7 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 
 	pstatus.PullButton = widget.NewButtonWithIcon("Pull", theme.MoveDownIcon(), func() { pstatus.PullButtonCallback() })
 	pstatus.SyncButton = widget.NewButtonWithIcon("Sync", theme.ViewRefreshIcon(), func() { pstatus.SyncButtonCallback() })
-	pstatus.CommitButton = widget.NewButtonWithIcon("Commit", theme.DocumentSaveIcon(), func() { pstatus.CommitButtonCallback() })
+	pstatus.LockButton = widget.NewButtonWithIcon("Manage Locks", assets.ResLockOpenSvg, func() { pstatus.LockButtonCallback() })
 
 	// Build manager buttons
 	buildTitleLabel := canvas.NewText("BUILD", theme.ForegroundColor())
@@ -158,7 +158,7 @@ func MakeProjectStatus(projectFile string) *ProjectStatus {
 				container.NewHBox(pstatus.ConfigStatus, pstatus.FixConfigLink),
 				widget.NewSeparator(),
 				canvas.NewText("Actions", theme.ForegroundColor()),
-				pstatus.CommitButton,
+				pstatus.LockButton,
 				pstatus.SyncButton,
 				pstatus.PullButton,
 			),

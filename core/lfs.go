@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -18,6 +19,9 @@ type LockDatum struct {
 		Name string `json:"name"`
 	} `json:"owner"`
 	LockedAt time.Time `json:"locked_at"`
+
+	// These are not part of the JSON
+	AssociatedMap string `json:"-"`
 }
 
 func GetLockedFiles(repoPath string, fromUser string) ([]LockDatum, error) {
@@ -34,6 +38,26 @@ func GetLockedFiles(repoPath string, fromUser string) ([]LockDatum, error) {
 	for _, lock := range locks {
 		if lock.Owner.Name == fromUser {
 			filteredLocks = append(filteredLocks, lock)
+		}
+	}
+
+	for i := range filteredLocks {
+		file := &filteredLocks[i]
+		if strings.Contains(file.Path, "__ExternalActors__") && strings.Contains(file.Path, ".uasset") {
+			mapPossibleName := strings.Replace(file.Path, "__ExternalActors__/", "", 1)
+			mapPossibleName = strings.Replace(mapPossibleName, ".uasset", "", 1)
+			for {
+				fmt.Printf("mapPossibleName: %v\n", mapPossibleName)
+				if FileExists(filepath.Join(repoPath, mapPossibleName+".umap")) {
+					file.AssociatedMap = mapPossibleName + ".umap"
+					break
+				}
+				if strings.Contains(mapPossibleName, "/") {
+					mapPossibleName = mapPossibleName[:strings.LastIndex(mapPossibleName, "/")]
+				} else {
+					break
+				}
+			}
 		}
 	}
 	return filteredLocks, nil
@@ -73,7 +97,7 @@ func GetLockableFiles(repoPath string) ([]string, error) {
 func UnlockLFSFiles(repoPath string, files []LockDatum, force bool) []error {
 	retval := make([]error, 0)
 	for _, file := range files {
-		args := []string{"unlock", "-i", file.ID}
+		args := []string{"lfs", "unlock", "-i", file.ID}
 		if force {
 			args = append(args, "--force")
 		}
@@ -91,7 +115,6 @@ func UnlockLFSFiles(repoPath string, files []LockDatum, force bool) []error {
 
 func ListLFSLockedUnchangedFiles(repoPath string) ([]LockDatum, error) {
 	lockedFiles, err := GetLockedFiles(repoPath, "")
-	fmt.Printf("lockedfiles: %v\n", lockedFiles)
 	if err != nil {
 		return nil, err
 	}

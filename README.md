@@ -1,5 +1,7 @@
 # UGS: G - Unreal Game Sync for Git
 
+![ugsg screenshot](https://github.com/miltoncandelero/Unreal-Game-Sync-Git/assets/15253010/96be9117-36b8-4a37-b902-19c735b0302c)
+
 ## Overview
 
 UGS: G, short for Unreal Game Sync: Git, is a tool inspired by [Unreal Game Sync](https://docs.unrealengine.com/5.3/en-US/unreal-game-sync-ugs-for-unreal-engine/) but tailored for Git instead of Perforce. Initially developed to aid artists and game designers at [Killabunnies](https://killabunnies.com.ar), this tool is designed to keep Unreal projects in sync without relying on Visual Studio for compilation. UGS: G is now released under the MIT license, potentially benefiting a broader audience.
